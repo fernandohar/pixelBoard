@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+  <html lang="en">
+  <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" shrink-to-fit=no">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jscolor/2.0.4/jscolor.min.js"></script>
+  <style>
+  html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}
+  h1{ color: #F2C299;}
+  .button { background-color: #195973; border: none; color: white; padding: 16px 40px;text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;border-radius:25px;}
+  .container-fluid {background-color: #053A40}
+  </style>
+  <title>PixBoard Control Panel</title>
+  <script>
+  var websockBrowser;
+  function setup_browser(){
+  websockBrowser = new WebSocket('ws://' + window.location.hostname + ':81/');
+  websockBrowser.onopen = function(evt) { console.log('websockBrowser open'); };
+  websockBrowser.onclose = function(evt) { console.log('websockBrowser close'); };
+  websockBrowser.onerror = function(evt) { console.log(evt); };
+  websockBrowser.onmessage = function(evt) {
+  
+  //Browser handle Messages from Sever (from webSocket.broadcastTXT() )
+//  var messageType = evt.data.slice(0, 3);
+//  var messageContent = evt.data.slice(3);
+  var obj = JSON.parse(evt.data);
+    if(obj != null && obj.msgType == "debugInfo"){
+      document.getElementById("uptimeStatus").innerHTML = obj.uptime;
+      document.getElementById("sdStatus").innerHTML = obj.sdReady;
+      document.getElementById("currentFolderPointerStatus").innerHTML = obj.currentFolderPointer;
+      document.getElementById("rootFolderCountStatus").innerHTML = obj.rootFolderCount;
+      document.getElementById("currentModeStatus").innerHTML = obj.currentMode;
+      document.getElementById("displaySpeedStatus").innerHTML = obj.displaySpeed;
+      document.getElementById("brightnessStatus").innerHTML = obj.brightness;
+      document.getElementById("freeHeapStatus").innerHTML = obj.freeHeap;
+
+      
+    }
+  
+  
+  
+  }; 
+  }
+  function sendToServer(action){
+  if(websockBrowser != null){
+  websockBrowser.send(action);
+  }
+  }
+  
+  </script>
+  </head>
+  <body onload = "javascript:setup_browser();">
+  <div class="container-fluid">
+  <div class="row">
+  <div class="col"><h1>Animation </h1></div>
+  </div>
+  <div class="row">
+  <div class="col"><a onclick="sendToServer('traverse');"><button class="button">Traverse All Folders</button></a></div> 
+  <div class="col"><a onclick="sendToServer('singleFolder');"><button class="button">Loop Single Folder</button></a></div>
+  <div class="col"></div>
+  </div>
+  
+  
+  <div class="row">
+  <div class="col"><h1>Mood Light </h1></div>
+  </div>
+  <div class="row">
+  <div class="col"><a onclick="sendToServer('changeColor#255,0,0');"><button class="button">RED</button></a></div>  
+  <div class="col"><a onclick="sendToServer('changeColor#0,255,0');"><button class="button">GREEN</button></a></div>
+  <div class="col"><a onclick="sendToServer('changeColor#0,0,255');"><button class="button">BLUE</button></a></div>
+  </div>  
+  <div class="row">
+  <div class="col"><a onclick="sendToServer('changeColor#255,255,255');"><button class="button">WHITE</button></a></div>
+  
+  <div class="col">
+  
+  
+  
+  <a id="change_color" href="#"><button class="button">Change Color</button></a>
+  <input class="jscolor {mode: 'HS', onFineChange:'update(this)'}" id="rgb">
+  </div>
+  <div class="col"></div>
+  </div>
+  
+  <div class="row">
+  <div class="col"><h1>Clock </h1></div>
+  </div>
+  <div class="row">
+  <div class="col"><a  onclick="sendToServer('showClock');"><button class="button">Show Clock</button></a></div>
+  <div class="col"></div>
+  <div class="col"></div>
+  </div>
+  
+  <div class="row">
+  <div class="col"><h1>Game</h1></div>
+  </div>
+  <div class="row">
+  <div class="col"><a onclick="{ sendToServer('startGameSnake'); window.location.href='gameController.htm';}"><button class="button">Snake Game</button></a></div>
+  </div>
+  
+  
+  <div class="row">
+  <div class="col"><h1>Setting</h1></div>
+  </div>
+  <div class="row">
+  <div class="col"><a onclick="sendToServer('bright');"><button class="button">Brightness +</button></a></div>
+  <div class="col"><a onclick="sendToServer('dim');"><button class="button">Brightness -</button></a></div>
+  <div class="col"></div>
+  </div>
+  <div class="row">
+  <div class="col"><a onclick="sendToServer('faster');"><button class="button">faster +</button></a></div>
+  <div class="col">
+  <a onclick="sendToServer('slower');"><button class="button">slower -</button></a>
+  </div>
+  <div class="col"></div>
+  </div>
+  </div>
+  
+  <h2>Debugger</h2>
+  <p>UpTime: <span id="uptimeStatus"></span></p>
+  <p>SD Ready:<span id="sdStatus"></span></p>
+  <p>Current Folder Pointer:<span id="currentFolderPointerStatus"></span></p>
+  <p>Root Folder Count:<span id="rootFolderCountStatus"></span></p>
+  <p>CurrentMode:<span id="currentModeStatus"></span></p>
+  <p>Display Speed:<span id="displaySpeedStatus"></span></p>
+  <p>Brightness:<span id="brightnessStatus"></span></p>
+  <p>freeHeap: <span id="freeHeapStatus"></span></p>
+  <script>
+ 
+  var changeColor_R = 0;
+  var changeColor_G = 0;
+  var changeColor_B = 0;
+  function update(picker) {
+  document.getElementById('rgb').innerHTML = Math.round(picker.rgb[0]) + ', ' +  Math.round(picker.rgb[1]) + ', ' + Math.round(picker.rgb[2]);
+  
+  var temp_R = Math.round(picker.rgb[0]);
+  var temp_G = Math.round(picker.rgb[1]);
+  var temp_B = Math.round(picker.rgb[2]);
+  var Steps = 64;
+  
+  if(Math.floor(temp_R / Steps) != Math.floor(changeColor_R / Steps) || 
+     Math.floor(temp_G/Steps) != Math.floor(changeColor_G/Steps) || 
+	 Math.floor(temp_B/Steps) != Math.floor(changeColor_B/Steps)){
+	changeColor_R = temp_R;
+	changeColor_G = temp_G;
+	changeColor_B = temp_B;
+	sendToServer('changeColor#'+changeColor_R+','+changeColor_G+','+changeColor_B);
+	console.log(changeColor_R + "," + changeColor_G + "," + changeColor_B);
+  }
+  
+    
+  //document.getElementById("change_color").href="changeColor?r=" + Math.round(picker.rgb[0]) + "&g=" +  Math.round(picker.rgb[1]) + "&b=" + Math.round(picker.rgb[2]);
+  }</script>
+  
+  </body></html>
