@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" shrink-to-fit=no">
+		<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/jscolor/2.0.4/jscolor.min.js"></script>
+		<style>
+			*{
+			margin: auto;
+			padding: 0;
+			-webkit-box-sizing: border-box;
+			box-sizing: border-box;
+			}
+			
+			body{
+			background-color: #FEFEFE;
+			}
+			
+			.controller{
+			margin-top: 100px;
+			height: 200px;
+			width: 400px;
+			background-color: #E6E6E6;
+			position: relative;
+			box-shadow: 15px 15px 15px rgba(0,0,0,0.2);
+			}
+			
+			.controllerLeft{
+			height: 250px;
+			width: 250px;
+			background-color: #E6E6E6;
+			position: absolute;
+			border-radius: 100%;
+			margin-left: -125px;
+			box-shadow: -15px 8px 15px rgba(0,0,0,0.2);
+			}
+			
+			.controllerRight{
+			height: 250px;
+			width: 250px;
+			background-color: #B8B8B8;
+			position: relative;
+			border-radius: 100%;
+			margin-right: -125px;
+			border: solid 15px rgba(230, 230, 230,1);
+			box-shadow: 15px 8px 15px rgba(0,0,0,0.2);
+			}
+			
+			.circle{
+			height: 150px;
+			width: 150px;
+			background-color: #E6E6E6;
+			position: absolute;
+			border-radius: 100%;
+			border: solid 5px rgba(184, 184, 184, 1);
+			margin-left: 42px;
+			margin-top: 52px;
+			}
+			
+			.crossCenter{
+			background-color: #333333;
+			width: 35px;
+			height: 35px;
+			margin-top: 110px;
+			margin-left: 100px;
+			position: relative;
+			}
+			
+			.crossCircle{
+			background-color: #292929;
+			width: 25px;
+			height: 25px;
+			position: absolute;
+			border-radius: 100%;
+			margin-top: 5px;
+			margin-left: 5px;
+			}
+			
+			.crossTop{
+			background-color: #333333;
+			width: 35px;
+			height: 35px;
+			position: absolute;
+			border-radius: 15%;
+			margin-top: -30px;
+			}
+			
+			.crossBottom{
+			background-color: #333333;
+			width: 35px;
+			height: 35px;
+			position: absolute;
+			border-radius: 15%;
+			margin-top: 30px;
+			}
+			
+			.crossLeft{
+			background-color: #333333;
+			width: 35px;
+			height: 35px;
+			position: absolute;
+			border-radius: 15%;
+			margin-left: -30px;
+			}
+			
+			.crossRight{
+			background-color: #333333;
+			width: 35px;
+			height: 35px;
+			position: absolute;
+			border-radius: 15%;
+			margin-left: 30px;
+			}
+			
+			.centerBlue{
+			position: absolute;
+			width: 50px;
+			height: 20px;
+			margin-left: 175px;
+			margin-top: 30px;
+			background-color: #0099FF;
+			}
+			
+			.centerLeft{
+			position: absolute;
+			width: 20px;
+			height: 20px;
+			margin-left: -10px;
+			margin-top: 0px;
+			background-color: #0099FF;
+			border-radius: 100%;
+			}
+			
+			.centerRight{
+			position: absolute;
+			width: 20px;
+			height: 20px;
+			margin-left: 40px;
+			margin-top: 0px;
+			background-color: #0099FF;
+			border-radius: 100%;
+			}
+			
+			.backButton1Center{
+			position: absolute;
+			width: 80px;
+			height: 50px;
+			background-color: #E6E6E6;
+			-webkit-transform: rotate(-30deg);
+			margin-top: 60px;
+			margin-left: 45px;
+			}
+			
+			.backButton2Center{
+			position: absolute;
+			width: 80px;
+			height: 50px;
+			background-color: #E6E6E6;
+			-webkit-transform: rotate(-30deg);
+			margin-top: 115px;
+			margin-left: 90px;
+			}
+			
+			.cornerLeft1{
+			position: absolute;
+			width: 50px;
+			height: 50px;
+			background-color: #00B800;
+			border-radius: 100%;
+			margin-left: -20px;
+			border: solid 5px rgba(230, 230, 230, 1)
+			}
+			
+			.cornerRight1{
+			position: absolute;
+			width: 50px;
+			height: 50px;
+			background-color: #6699FF;
+			border-radius: 100%;
+			margin-left: 60px;
+			border: solid 5px rgba(230, 230, 230, 1)
+			}
+			
+			.cornerLeft2{
+			position: absolute;
+			width: 50px;
+			height: 50px;
+			background-color: #CFCF00;
+			border-radius: 100%;
+			margin-left: -20px;
+			border: solid 5px rgba(230, 230, 230, 1)
+			}
+			
+			.cornerRight2{
+			position: absolute;
+			width: 50px;
+			height: 50px;
+			background-color: #7D230D;
+			border-radius: 100%;
+			margin-left: 60px;
+			border: solid 5px rgba(230, 230, 230, 1)
+			}
+			
+			.centerStart{
+			background-color: #B8B8B8;
+			position: absolute;
+			height: 35px;
+			width: 10px;
+			margin-left: 180px;
+			margin-top: 110px;
+			-webkit-transform: rotate(20deg);
+			}
+			
+			.centerSelect{
+			background-color: #B8B8B8;
+			position: absolute;
+			height: 35px;
+			width: 10px;
+			margin-left: 205px;
+			margin-top: 110px;
+			-webkit-transform: rotate(20deg);
+			}
+			
+			.SLeft{
+			background-color: #B8B8B8;
+			position: absolute;
+			border-radius: 100%;
+			height: 10px;
+			width: 10px;
+			margin-top: 30px;
+			}
+			
+			.SRight{
+			background-color: #B8B8B8;
+			position: absolute;
+			border-radius: 100%;
+			height: 10px;
+			width: 10px;
+			margin-top: -5px;
+			}
+			
+			.cable{
+			background-color: black;
+			width: 10px;
+			height: 150px;
+			position: absolute;
+			margin-left: 49.7%;
+			margin-top: -100px;
+			box-shadow: 7px 8px 15px rgba(0,0,0,0.2);
+			}
+		</style>
+		<script>
+			var websockBrowser;
+			var btnsStatus = Array.apply(null, Array(8)).map(Number.prototype.valueOf,0);
+			function setup_browser(){
+				websockBrowser = new WebSocket('ws://' + window.location.hostname + ':81/');
+				websockBrowser.onopen = function(evt) { console.log('websockBrowser open'); };
+				websockBrowser.onclose = function(evt) { console.log('websockBrowser close'); };
+				websockBrowser.onerror = function(evt) { console.log(evt); };
+				websockBrowser.onmessage = function(evt) {
+					
+					//Browser handle Messages from Sever (from webSocket.broadcastTXT() )
+					var obj = JSON.parse(evt.data);
+					if(obj != null){
+						if(obj.msgType == "debugInfo"){
+							document.getElementById("uptimeStatus").innerHTML = obj.uptime;
+							document.getElementById("sdStatus").innerHTML = obj.sdReady;
+							document.getElementById("currentFolderPointerStatus").innerHTML = obj.currentFolderPointer;
+							document.getElementById("rootFolderCountStatus").innerHTML = obj.rootFolderCount;
+							document.getElementById("currentModeStatus").innerHTML = obj.currentMode;
+							document.getElementById("displaySpeedStatus").innerHTML = obj.displaySpeed;
+							document.getElementById("brightnessStatus").innerHTML = obj.brightness;
+							document.getElementById("freeHeapStatus").innerHTML = obj.freeHeap;
+						}else if (obj.msgType == "cmd"){
+							if(obj.action == "readController"){
+								sendBtnStatus();
+							}
+						}
+					}
+				}; 
+			}
+			function sendToServer(action){
+				if(websockBrowser != null){
+					websockBrowser.send(action);
+				}
+			}
+			document.onkeydown = function(event) {
+				switch (event.keyCode) {
+					case 37:
+					//sendToServer('controllerLeft');           
+					setBtnStatus(2, 1);
+					break;
+					case 38:
+					//sendToServer('controllerUp');			
+					setBtnStatus(0, 1);
+					break;
+					case 39:
+					//endToServer('controllerRight');               
+					setBtnStatus(3, 1);
+					break;
+					case 40:
+					//sendToServer('controllerDown');
+					setBtnStatus(1, 1);
+					break;
+				}
+				sendBtnStatus();
+			};
+			document.onkeyup = function(event){
+					switch (event.keyCode) {
+					case 37:
+					//sendToServer('controllerLeft');           
+					setBtnStatus(2, 0);
+					break;
+					case 38:
+					setBtnStatus(0 0);
+					//sendToServer('controllerUp');			
+					break;
+					case 39:
+					//sendToServer('controllerRight');               
+					setBtnStatus(3, 0);
+					break;
+					case 40:
+					//sendToServer('controllerDown');
+					setBtnStatus(1, 0);
+					break;
+				}
+				sendBtnStatus();
+			}
+			function setBtnStatus(btnNum, status){
+				btnsStatus[ btnNum ] = status;
+			}
+			function setNSendBtnStatus(btnNum, status){
+				setBtnStatus(btnNum, status);
+				sendBtnStatus();
+			}
+			function sendBtnStatus(){
+				var s = btnsStatus.join('');
+				sendToServer('buttonStatus:'+s );
+			}
+		</script>
+	</head>
+	<body onload = "javascript:setup_browser();">
+		<div class="container-fluid">
+			<div class="row">
+				<div class="col">
+					
+					<div class=cable></div>
+					<div class=controller>
+						<div class=centerBlue>
+							<div class=centerLeft onclick="window.location.href='pixBoardController.htm';"></div>   
+							<div class=centerRight onclick="window.location.href='pixBoardController.htm';"></div>  
+						</div>
+						<div class=centerStart>
+							<div class=SLeft></div>
+							<div class=SRight></div>
+						</div>
+						<div class=centerSelect>
+							<div class=SLeft  ></div>
+							<div class=SRight></div>
+						</div>
+						
+						<div class=controllerLeft>
+							<div class=circle></div>
+							<div class=crossCenter>
+								<div class=crossTop onmousedown="setNSendBtnStatus(0, 1);" onmouseup="setNSendBtnStatus(0, 0);"></div>
+								<div class=crossBottom onmousedown="setNSendBtnStatus(1, 1);" onmouseup="setNSendBtnStatus(1, 0);"></div>
+								<div class=crossLeft onmousedown="setNSendBtnStatus(2, 1);" onmouseup="setNSendBtnStatus(2, 0);"></div>
+								<div class=crossRight onmousedown="setNSendBtnStatus(3, 1);" onmouseup="setNSendBtnStatus(3, 0);"></div>
+								<div class=crossCircle></div>
+							</div>
+						</div>
+						<div class=controllerRight>
+							<div class=backButton1Center>
+								<div class= cornerLeft1 onmousedown="setNSendBtnStatus(4, 1);" onmouseup="setNSendBtnStatus(4, 0);"></div>
+								<div class= cornerRight1 onmousedown="setNSendBtnStatus(5, 1);" onmouseup="setNSendBtnStatus(5, 0);"></div>
+							</div>
+							<div class=backButton2Center>
+								<div class= cornerLeft2 onmousedown="setNSendBtnStatus(6, 1);" onmouseup="setNSendBtnStatus(6,0);"></div>
+								<div class= cornerRight2 onmousedown="setNSendBtnStatus(7, 1);" onmouseup="setNSendBtnStatus(7, 0);"></div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+			
+			<h2>Debugger</h2>
+			<p>UpTime: <span id="uptimeStatus"></span></p>
+			<p>SD Ready:<span id="sdStatus"></span></p>
+			<p>Current Folder Pointer:<span id="currentFolderPointerStatus"></span></p>
+			<p>Root Folder Count:<span id="rootFolderCountStatus"></span></p>
+			<p>CurrentMode:<span id="currentModeStatus"></span></p>
+			<p>Display Speed:<span id="displaySpeedStatus"></span></p>
+			<p>Brightness:<span id="brightnessStatus"></span></p>
+			<p>freeHeap: <span id="freeHeapStatus"></span></p>
+		</body>
+	</html>	
