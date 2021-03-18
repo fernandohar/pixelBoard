@@ -1,12 +1,10 @@
 //Fernando Har - 20190424
 #include <SPI.h>
 #include <EEPROM.h>
-#include <SdFat.h>
-#include <IniFileLite.h>
 #include <Adafruit_NeoPixel.h>
-
+#include "SdFat.h"
 //WifiManager-OTA
-#include <ESP8266WiFi.h>   //https://github.com/esp8266/Arduino
+//#include <ESP8266WiFi.h>   //https://github.com/esp8266/Arduino
 #include <DNSServer.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
@@ -18,7 +16,7 @@
 #define SD_CS 15           //for SD card reader
 
 #include <Wire.h>        //I2C device 
-#include <RtcDS3231.h>
+#include <RtcDS3231.h>  //https://github.com/Makuna/Rtc
 RtcDS3231<TwoWire> Rtc(Wire);
 #include "PixelBoardController.h"
 #include "PixelBoard.h"
@@ -41,6 +39,7 @@ RtcDS3231<TwoWire> Rtc(Wire);
 #define GAME_ARKANOID 8
 #define TOTAL_MODES 8 
 
+using namespace sdfat;
 //PIXEL FRAME 
 byte    currentMode = PIXEL_ART_TRAVERSE; //0 - Update Sketch, 1 - Traverse Folders; 2 - Single Folder; 3 - Fill Color; 4 - Clock
 byte    previousMode = 255;    //to resume previous mode after OTA update
@@ -52,7 +51,7 @@ bool      sdReady = false;
 
 //LED STRIP 
 byte brightness;
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(256, 2, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(BOARDSIZE, 2, NEO_GRB + NEO_KHZ800);
 
 //WiFiManager
 WiFiManager wifiManager;
@@ -64,12 +63,12 @@ ESP8266WebServer  server(80);//Web server object. Will be listening in port 80 (
 //Web Socket Server
 WebSocketsServer webSocket = WebSocketsServer(81);
 
-//PixelBoardController pixelBoardController = PixelBoardController();
+//Remote Control
 PixelBoardController pixelBoardController = PixelBoardController(&webSocket);
-PixelBoard pixelBoard = PixelBoard(&strip);
 
-//GAME
-GameSnake gameSnake = GameSnake(&strip, 3, &pixelBoardController); //avoid copy;
+//Applications
+PixelBoard pixelBoard = PixelBoard(&strip); //Mood light
+GameSnake gameSnake = GameSnake(&strip, 3, &pixelBoardController);
 GameTetris gameTetris = GameTetris(&strip, &pixelBoardController);
 GameOfLife gameOfLife = GameOfLife(&strip, &pixelBoardController);
 GameArkanoid gameArkanoid = GameArkanoid(&strip, &pixelBoardController);
@@ -77,6 +76,12 @@ GameArkanoid gameArkanoid = GameArkanoid(&strip, &pixelBoardController);
 PixelArt pixelArt = PixelArt(&strip, &sd, &pixelBoardController);
 PixelClock pixelClock = PixelClock(&strip, &Rtc);
 
+WiFiUDP UDP;
+
+IPAddress timeServerIP;
+const char* NTPServerName = "CORPQEHDC02.corp.ha.org.hk";
+const int NTP_PACKET_SIZE = 48;  // NTP time stamp is in the first 48 bytes of the message
+byte NTPBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
 
 //[Section] - Read and write to EEPROM
 byte readEEPROM(uint address){
@@ -182,14 +187,16 @@ void handleGameSnakeMode(){
 }
 
 
+//[Section] Setup function for various modules
 void setupNeoPixelBoard(){
   Serial.println("[Begin] Setup NeoPixel Board");
+  Serial.printf("Board width:%d , height: %d", BOARDWIDTH, BOARDHEIGHT);
   //SETUP NEOPIXEL
   strip.begin();
   strip.show();
   setBrightness(brightness);
   Serial.println("[Complete] Setup NeoPixel Board");
-  Serial.println("[Begin] NeoPixel Board pixel test");
+//  Serial.println("[Begin] NeoPixel Board pixel test");
   //pixel test
   pixelBoard.fill(255, 0, 0, false);
   delay(100);
@@ -200,7 +207,8 @@ void setupNeoPixelBoard(){
   pixelBoard.fill(0, 0, 0, false);
   delay(100);
   
-  Serial.println("[Complete] NeoPixel Board pixel test");
+  //Serial.println("[Complete] NeoPixel Board pixel test");
+  Serial.println("[Complete] Setup NeoPixel Board");
 }
 
 bool setupSDCard(){
@@ -258,7 +266,8 @@ void readRTC(){
         // Common Cuases:
         //    1) the battery on the device is low or even missing and the power line was disconnected
         Serial.println("RTC lost confidence in the DateTime!");
-  }
+		return;
+	}
   
     RtcDateTime now = Rtc.GetDateTime();
     //printDateTime(now);
@@ -284,7 +293,7 @@ void File_Upload(){
   server.send(200, "text/html",webpage);
 }
 
-File uploadFile; 
+sdfat::File uploadFile; 
 void handleFileUpload(){ // upload a new file to the Filing system
   HTTPUpload& upload = server.upload(); // See https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266WebServer/
                                             // For further information on 'status' structure, there are other reasons such as a failed transfer that could be used
@@ -295,7 +304,7 @@ void handleFileUpload(){ // upload a new file to the Filing system
     filename = "/"+filename;
   }
    
-  File delfile;
+  sdfat::File delfile;
   
   if(delfile = sd.open(filename, FILE_WRITE)){
     delfile.remove();
@@ -341,14 +350,13 @@ void connectWiFi(){
   if(reconnectWifiFlag){
 	reconnectWifiFlag = false;
     Serial.println("[Begin] wifi Manager Auto Connect");
-    // fetches ssid and pass from eeprom and tries to connect
-    // if it does not connect it starts an access point with the specified name
-    // here  "AutoConnectAP"
-    // and goes into a blocking loop awaiting configuration
-    wifiManager.autoConnect("pixelboard-0001");
-	//wifiManager.startConfigPortal("PixelBoard");
+	char deviceName[30] = {0}; 
+	sprintf(deviceName, "pixelboard_%06X", ESP.getChipId());
+	Serial.printf("Device name: [%s]\n", deviceName);
+    wifiManager.autoConnect(deviceName);
+	
     // start MDNS
-    if (MDNS.begin("pixelboard-0001")) {
+    if (MDNS.begin(deviceName)) {
       Serial.println("MDNS responder started.");
     }
    
@@ -373,13 +381,15 @@ void setBrightness(byte level){
 }
 
 unsigned long loopTimerTemp = 0;
-unsigned long debuggTimer = 0;
+unsigned long ntpTimer = 0;
 
 const char JSON_DEBUGGER_FORMAT[] = "{\"msgType\":\"debugInfo\",\"uptime\":\"%s\",\"sdReady\":%d, \"currentFolderPointer\":%d, \"rootFolderCount\":%d, \"currentMode\":%d, \"displaySpeed\":%d, \"brightness\":%d, \"freeHeap\":%d}";
 const char UPTIMECHAR_FORMAT[] = "%02dd:%02dh:%02dm:%02ds";
 char uptimeChar[15];
 char jsonBuffer[200];
-
+uint32_t timeUNIX = 0;
+unsigned long lastNTPResponse = 0;
+unsigned long prevActualTime = 0;
 void loop() {
   //connectWiFi();
   ArduinoOTA.handle();
@@ -407,7 +417,7 @@ void loop() {
   //Print Debugger information (JSON) to jsonBuffer
   snprintf(jsonBuffer, 200, JSON_DEBUGGER_FORMAT, uptimeChar, sdReady, pixelArt.currentFolderPointer, pixelArt.rootFolderCount, currentMode, pixelArt.displaySpeed, brightness, ESP.getFreeHeap());
   webSocket.broadcastTXT(jsonBuffer);
-  debuggTimer = loopTimerTemp;
+  //debuggTimer = loopTimerTemp;
   return;
 }
 
@@ -429,6 +439,22 @@ void loop() {
     pixelBoard.update(loopTimerTemp); //Fill Board
   }else if (currentMode == CLOCK){
     pixelClock.update(loopTimerTemp); //Show Clock
+  }
+  if(loopTimerTemp - ntpTimer > 300000){
+	ntpTimer = loopTimerTemp;
+	 sendNTPpacket(timeServerIP);               // Send an NTP request
+  }
+  uint32_t time = getTime();                   // Check if an NTP response has arrived and get the (UNIX) time
+  if (time) {                                  // If a new timestamp has been received
+    timeUNIX = time;
+    Serial.println("NTP response:\t");
+    Serial.println(timeUNIX);
+	lastNTPResponse = loopTimerTemp;
+	uint32_t actualTime = timeUNIX + (loopTimerTemp - lastNTPResponse)/1000;
+	if (actualTime != prevActualTime && timeUNIX != 0) { // If a second has passed since last print
+		prevActualTime = actualTime;
+		Serial.printf("\rUTC time:\t%d:%d:%d   \n", getHours(actualTime), getMinutes(actualTime), getSeconds(actualTime));
+	}  
   }
 }
 
@@ -461,7 +487,7 @@ bool loadFromSdCard(String path) {
     } else if (path.endsWith(".zip")) {
     dataType = "application/zip";
   }
-  File myfile;
+  sdfat::File myfile;
   sd.vwd()->rewind();
   if(sd.exists(path.c_str()) ){
     myfile = sd.open(path.c_str(), O_READ);
@@ -576,6 +602,43 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
   }
 }
 
+inline int getSeconds(uint32_t UNIXTime) {
+  return UNIXTime % 60;
+}
+
+inline int getMinutes(uint32_t UNIXTime) {
+  return UNIXTime / 60 % 60;
+}
+
+inline int getHours(uint32_t UNIXTime) {
+  return UNIXTime / 3600 % 24;
+}
+
+uint32_t getTime() {
+  if (UDP.parsePacket() == 0) { // If there's no response (yet)
+    return 0;
+  }
+  UDP.read(NTPBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
+  // Combine the 4 timestamp bytes into one 32-bit number
+  uint32_t NTPTime = (NTPBuffer[40] << 24) | (NTPBuffer[41] << 16) | (NTPBuffer[42] << 8) | NTPBuffer[43];
+  // Convert NTP time to a UNIX timestamp:
+  // Unix time starts on Jan 1 1970. That's 2208988800 seconds in NTP time:
+  const uint32_t seventyYears = 2208988800UL;
+  // subtract seventy years:
+  uint32_t UNIXTime = NTPTime - seventyYears;
+  return UNIXTime;
+}
+
+void sendNTPpacket(IPAddress& address) {
+  memset(NTPBuffer, 0, NTP_PACKET_SIZE);  // set all bytes in the buffer to 0
+  // Initialize values needed to form NTP request
+  NTPBuffer[0] = 0b11100011;   // LI, Version, Mode
+  // send a packet requesting a timestamp:
+  UDP.beginPacket(address, 123); // NTP requests are to port 123
+  UDP.write(NTPBuffer, NTP_PACKET_SIZE);
+  UDP.endPacket();
+}
+
 //[Section] Main Control UI HTML
 
 void setup() {
@@ -583,12 +646,14 @@ void setup() {
   Serial.println("Booting");
   
   sdReady = setupSDCard();
-  
-  EEPROM.begin(512);
   if(sdReady){
-    //pixelArt = PixelArt(&strip, &sd);
+    Serial.println("[SD Card] is Ready");
 	pixelArt.init();
+  }else{
+    Serial.println("[SD CARD] ERROR");
+    
   }
+  EEPROM.begin(512);
   restorePreviousState(); 
 
   setupNeoPixelBoard();
@@ -596,15 +661,28 @@ void setup() {
   needRestart = false;
   
   setupRTC();
+  Serial.println("Display ICON");
+  pixelArt.displayIcon("wifi.bmp");
+  
   wifiManager.setConfigPortalTimeout(60);
   connectWiFi();
 
   if(WiFi.status() == WL_CONNECTED){
-
+	//Sync RTC with NTP;
+	
+	Serial.println("Starting UDP");
+	UDP.begin(123);                          // Start listening for UDP messages on port 123
+	Serial.print("Local port:\t");
+	Serial.println(UDP.localPort());
   
+	WiFi.hostByName(NTPServerName, timeServerIP);
+	 Serial.print("Time server IP:\t");
+	Serial.println(timeServerIP);
   
-  webSocket.begin();
-  webSocket.onEvent(webSocketEvent);
+	Serial.println("\r\nSending NTP request ...");
+	sendNTPpacket(timeServerIP);  
+	webSocket.begin();
+	webSocket.onEvent(webSocketEvent);
 
   server.on("/snakeGame", handleGameSnakeMode);
   server.on("/gameSnake", handleGameSnakeMode);

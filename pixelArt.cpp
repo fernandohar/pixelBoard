@@ -130,6 +130,23 @@ void PixelArt::playFileInFolder(){
   currentFileIndex++;  
 }
 
+void PixelArt::displayIcon(char* filename){
+ // Serial.println("function: displayIcon");
+  sdPtr->chdir("/");
+  sdPtr->vwd()->rewind();
+  if(sdPtr->exists("/icon")){
+    //Serial.println("directory /icon exists");
+    sdPtr->chdir("/icon");
+    //Serial.println("directory changed");
+    //Serial.printf("bmpDraw [%s]\n", filename);
+    bmpDraw(filename);
+  }else{
+    Serial.println("directory icon does not exists");
+  }
+  
+  
+	
+}
 void PixelArt::bmpDraw(char* filename){
   int  bmpWidth, bmpHeight;   // W+H in pixels
   uint8_t  bmpDepth;              // Bit depth (currently must be 24)
@@ -198,8 +215,9 @@ void PixelArt::bmpDraw(char* filename){
           byte index = 0; // a byte is perfect for a 16x16 grid
           
           // Crop area to be loaded
-          for (row=0; row < bmpHeight; row++) { // For each scanline...
-            
+          //for (row=0; row < bmpHeight; row++) { // For each scanline...
+		  for(row = 0; row < BOARDHEIGHT; row++){
+            //Serial.printf("draw for row#( %d )\n", row);
             // Seek to start of scan line.  It might seem labor-
             // intensive to be doing this on every line, but this
             // method covers a lot of gritty details like cropping
@@ -230,11 +248,21 @@ void PixelArt::bmpDraw(char* filename){
               r = sdbuffer[buffidx++];
 
               // offsetY is beyond bmpHeight
+			  if(col >= BOARDWIDTH){
+				continue;
+			  }
+			  //Serial.printf("setPixelColor( %d )\n", getPixelIndex(col, row));
               stripPtr->setPixelColor(getPixelIndex(col, row), Adafruit_NeoPixel::Color(r, g, b)); // paint pixel color
             } // end pixel
           } // end scanline
         }//file not compressed
+		else{
+			Serial.println("ERROR, BMP must not be compressed");
+		}
       } //if bit depth = 24
+	  else{
+		Serial.println("ERROR, BMP depth must be 24 bit");
+	  }
     } //if planes = 1
   }//if 0x4D42
   

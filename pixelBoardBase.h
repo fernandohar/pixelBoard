@@ -7,7 +7,7 @@
 
 #define BOARDWIDTH 16
 #define BOARDHEIGHT 16
-#define BOARDSIZE 256
+#define BOARDSIZE BOARDWIDTH * BOARDHEIGHT
   
 #if defined(ARDUINO) && ARDUINO >= 100
   #include "arduino.h"
@@ -181,7 +181,8 @@ public:
 	  return (y * BOARDWIDTH + BOARDWIDTH - 1 ) - x;
 	}
   }
-  unsigned long colorPlate[139] = {
+/*
+unsigned long colorPlate[139] = {
 NAVY,
 DARKBLUE ,
 MEDIUMBLUE ,
@@ -321,7 +322,7 @@ YELLOW ,
 LIGHTYELLOW ,
 IVORY,
 WHITE};
-
+*/
 
 protected:
   Adafruit_NeoPixel* stripPtr;

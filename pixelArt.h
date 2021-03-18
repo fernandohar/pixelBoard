@@ -2,10 +2,14 @@
 //Class to display pixel art using BMP from SD card
 #ifndef _PIXELART_h
 #define _PIXELART_h
+#include "SdFat.h"
 #include "PixelBoardBase.h"
 #include "PixelBoardController.h"
 #include <algorithm>    /* std::max */
-#include <SdFat.h>
+
+using namespace sdfat;
+//#include "SdFat/src/SdFat.h" //https://github.com/greiman/SdFat
+//#include <SdFat.h> //https://github.com/greiman/SdFat
 #define BUFFPIXEL 1
 class PixelArt : public PixelBoardBase{
 public:
@@ -40,6 +44,8 @@ public:
 	void stopTraverseFolders(){
 		this->isTraverseFolderMode = false;
 	}
+	
+	void displayIcon(char* filename);
 private:
   PixelBoardController* pixelBoardController;
   
