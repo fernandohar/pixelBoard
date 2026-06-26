@@ -242,6 +242,16 @@ void setNextMode(){
   webSocket.broadcastTXT("setNextMode");
 	setCurrentMode(mode);
 }
+
+void setPreviousMode(){
+	int mode = currentMode - 1;
+	if(mode < 1){
+		mode = TOTAL_MODES;
+	}
+  webSocket.broadcastTXT("setPreviousMode");
+	setCurrentMode(mode);
+}
+
 void setCurrentMode(byte mode){
   setCurrentMode(mode, true);
 }
@@ -964,6 +974,13 @@ void loop() {
     handleSetupMenuButtons(loopTimerTemp);
     updateSetupMenu(loopTimerTemp);
   }else{
+    if(currentMode != OTA_UPDATE){
+      if(hardwareUpPressed){
+        setPreviousMode();
+      }else if(hardwareDownPressed){
+        setNextMode();
+      }
+    }
  
   if(pixelBoardController.getBtnStatus(BTNS) == 1 &&
     pixelBoardController.getBtnStatus(BTNA) == 1 ){
