@@ -2,7 +2,7 @@
 //Class to display time with PixelBoardBase
 #ifndef _PIXELCLOCK_H
 #define _PIXELCLOCK_H
-#include "PixelBoardBase.h"
+#include "pixelBoardBase.h"
 #include <Wire.h>        //I2C device 
 #include <RtcDS3231.h>
 

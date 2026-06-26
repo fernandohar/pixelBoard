@@ -1,8 +1,8 @@
 #ifndef _GAME_OF_LIFE_H
 #define _GAME_OF_LIFE_H
 
-#include "PixelBoardBase.h"
-#include "PixelBoardController.h"
+#include "pixelBoardBase.h"
+#include "pixelBoardController.h"
 #include <cstdlib>      /* for std::rand() and std::srand() */
 
 #define SIZE 8

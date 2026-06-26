@@ -138,7 +138,7 @@ void PixelArt::playFileInFolder(){
   currentFileIndex++;  
 }
 
-void PixelArt::displayIcon(char* filename){
+void PixelArt::displayIcon(const char* filename){
  // Serial.println("function: displayIcon");
   sdPtr->chdir("/");
   if(sdPtr->exists("/icon")){
@@ -154,7 +154,7 @@ void PixelArt::displayIcon(char* filename){
   
 	
 }
-void PixelArt::bmpDraw(char* filename){
+void PixelArt::bmpDraw(const char* filename){
   int  bmpWidth, bmpHeight;   // W+H in pixels
   uint8_t  bmpDepth;              // Bit depth (currently must be 24)
   uint32_t bmpImageoffset;        // Start of image data in file

@@ -157,4 +157,5 @@ byte GameSnake::getRelativePos(byte parentPos, int direction){
 			return parentPos - 1;
 		}
 	}
+	return parentPos;
 }

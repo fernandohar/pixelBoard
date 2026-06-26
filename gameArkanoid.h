@@ -1,8 +1,8 @@
 #ifndef _GAME_ARKANOID_H
 #define _GAME_ARKANOID_H
 
-#include "PixelBoardBase.h"
-#include "PixelBoardController.h"
+#include "pixelBoardBase.h"
+#include "pixelBoardController.h"
 #include <cstdlib>      /* for std::rand() and std::srand() */
 #include <algorithm>    /* std::max */
 #define COL_OF_BRICKS 8

@@ -3,8 +3,8 @@
 #ifndef _PIXELART_h
 #define _PIXELART_h
 #include "SdFat.h"
-#include "PixelBoardBase.h"
-#include "PixelBoardController.h"
+#include "pixelBoardBase.h"
+#include "pixelBoardController.h"
 #include <algorithm>    /* std::max */
 
 //#include "SdFat/src/SdFat.h" //https://github.com/greiman/SdFat
@@ -44,7 +44,7 @@ public:
 		this->isTraverseFolderMode = false;
 	}
 	
-	void displayIcon(char* filename);
+	void displayIcon(const char* filename);
 private:
   PixelBoardController* pixelBoardController;
   
@@ -67,7 +67,7 @@ private:
 	void NextFolder();
   void PreviousFolder();
 	
-	void bmpDraw(char* filename);
+	void bmpDraw(const char* filename);
 	int  currentFileIndex = 1;
 	bool currentFolderCompleted = true;
 	bool isTraverseFolderMode = false;

@@ -13,8 +13,8 @@
 //WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 #ifndef _GAME_TETRIS_H
 #define _GAME_TETRIS_H
-#include "PixelBoardBase.h"
-#include "PixelBoardController.h"
+#include "pixelBoardBase.h"
+#include "pixelBoardController.h"
 
 #define LED_ROWS 16
 #define LED_COLUMNS 16

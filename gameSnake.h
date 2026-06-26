@@ -2,8 +2,8 @@
 #ifndef _GAMESNAKE_h
 #define _GAMESNAKE_h
 
-#include "PixelBoardBase.h"
-#include "PixelBoardController.h"
+#include "pixelBoardBase.h"
+#include "pixelBoardController.h"
 #include <cstdlib>      /* for std::rand() and std::srand() */
 #include <time.h>       /* time */
 #include <algorithm>    /* std::max */

@@ -28,11 +28,11 @@
 #include <Wire.h>        //I2C device 
 #include <RtcDS3231.h>  //https://github.com/Makuna/Rtc
 RtcDS3231<TwoWire> Rtc(Wire);
-#include "PixelBoardController.h"
-#include "PixelBoard.h"
-#include "PixelClock.h"
+#include "pixelBoardController.h"
+#include "pixelBoard.h"
+#include "pixelClock.h"
 #include "pixelMenu.h"
-#include "PixelArt.h"
+#include "pixelArt.h"
 #include "gameSnake.h"
 #include "gameTetris.h" //Original game from: https://github.com/scout119/RGB123/tree/master/Tetris
 #include "gameOfLife.h"
@@ -1101,7 +1101,15 @@ bool loadFromSdCard(String path) {
   File32 myfile;
   if(sd.exists(path.c_str()) ){
     myfile = sd.open(path.c_str(), O_RDONLY);
-    server.streamFile( myfile , dataType);
+    server.setContentLength(myfile.size());
+    server.send(200, dataType, "");
+    uint8_t buffer[512];
+    int bytesRead;
+    WiFiClient client = server.client();
+    while((bytesRead = myfile.read(buffer, sizeof(buffer))) > 0){
+      client.write(buffer, bytesRead);
+      yield();
+    }
     myfile.close();
     }else{
     return false;
