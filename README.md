@@ -91,6 +91,58 @@ from `pixelBoard.ino`. Arduino supports multiple `.ino` sketch tabs, but an
 explicit header include keeps this project from depending on Arduino's `.ino`
 concatenation order.
 
+## Web game controller
+
+Some display modes are games and need directional controls that are easier to
+use from the browser controller than from the four hardware setup buttons. This
+includes Snake, Tetris, and Arkanoid.
+
+The ESP8266 serves the controller pages from the SD card:
+
+```text
+http://<device-ip>/pixBoardController.htm
+http://<device-ip>/gameController.htm
+```
+
+The default page is `pixBoardController.htm`, so you can usually open:
+
+```text
+http://<device-ip>/
+```
+
+To connect:
+
+1. Put `pixBoardController.htm` and `gameController.htm` on the SD card root.
+2. Boot the board and connect it to WiFi.
+3. Use the hardware menu:
+
+   ```text
+   MENU -> WIFI -> SHOW IP
+   ```
+
+4. Open that IP address in a phone/computer browser.
+5. Press **Snake Game** or open `/gameController.htm`.
+
+`gameController.htm` opens a WebSocket connection to:
+
+```text
+ws://<device-ip>:81/
+```
+
+It sends controller state messages like:
+
+```text
+buttonStatus:0010000
+```
+
+The button order is:
+
+```text
+UP, DOWN, LEFT, RIGHT, SELECT/START, A, B
+```
+
+Keyboard arrow keys also control the D-pad when using a computer browser.
+
 ## NTP server configuration
 
 The firmware defaults to the public NTP pool:
