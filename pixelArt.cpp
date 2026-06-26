@@ -39,12 +39,15 @@ void PixelArt::reset(){
 
 void PixelArt::init(){
 	reset();
-	//Working directory rewind
-	sdPtr->vwd()->rewind();
+	if(root.isOpen()){
+		root.close();
+	}
 	
 	//All animation files are under the "animation" folder 
-	sdPtr->chdir("/animation");
-	while(file.openNext(sdPtr->vwd(), O_READ)){
+	if(!root.open("/animation")){
+		return;
+	}
+	while(file.openNext(&root, O_RDONLY)){
 	  if(!file.isHidden() && file.isDir()){
         directoryIndex[rootFolderCount++] = file.dirIndex();
 	  }
@@ -58,7 +61,7 @@ void PixelArt::init(){
 // These read 16- and 32-bit types from the SD card file.
 // BMP data is stored little-endian, Arduino is little-endian too.
 // May need to reverse subscript order if porting elsewhere.
-uint16_t PixelArt::read16(SdFile& f) {
+uint16_t PixelArt::read16(File32& f) {
 	uint16_t result;
 	((uint8_t *)&result)[0] = f.read(); // LSB
 	((uint8_t *)&result)[1] = f.read(); // MSB
@@ -68,7 +71,7 @@ uint16_t PixelArt::read16(SdFile& f) {
 // These read 16- and 32-bit types from the SD card file.
 // BMP data is stored little-endian, Arduino is little-endian too.
 // May need to reverse subscript order if porting elsewhere.
-uint32_t PixelArt::read32(SdFile& f) {
+uint32_t PixelArt::read32(File32& f) {
 	uint32_t result;
 	((uint8_t *)&result)[0] = f.read(); // LSB
 	((uint8_t *)&result)[1] = f.read();
@@ -93,8 +96,13 @@ void PixelArt::PreviousFolder(){
 }
 
 void PixelArt::openFolder(byte folderIndex){
+	if(!root.isOpen()){
+		if(!root.open("/animation")){
+			return;
+		}
+	}
 	sdPtr->chdir("/animation");
-	file.open(sdPtr->vwd(), directoryIndex[folderIndex], O_READ);
+	file.open(&root, directoryIndex[folderIndex], O_RDONLY);
     file.getName(folderName, 20);
     sdPtr->chdir(folderName);
     file.close();
@@ -133,7 +141,6 @@ void PixelArt::playFileInFolder(){
 void PixelArt::displayIcon(char* filename){
  // Serial.println("function: displayIcon");
   sdPtr->chdir("/");
-  sdPtr->vwd()->rewind();
   if(sdPtr->exists("/icon")){
     //Serial.println("directory /icon exists");
     sdPtr->chdir("/icon");
@@ -163,7 +170,7 @@ void PixelArt::bmpDraw(char* filename){
 
   if (!file.isOpen()){
     // Open requested file on SD card
-    if (!file.open(filename, O_READ)) {
+    if (!file.open(filename, O_RDONLY)) {
       //Serial.println(F("File open failed"));
       return;
     }

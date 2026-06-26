@@ -4,6 +4,7 @@
 #include <string.h>
 #include <Adafruit_NeoPixel.h>
 #include "SdFat.h"
+#include "sdios.h"
 //WifiManager-OTA
 //#include <ESP8266WiFi.h>   //https://github.com/esp8266/Arduino
 #include <DNSServer.h>
@@ -15,6 +16,14 @@
 #include "ArduinoOTA.h"    //https://github.com/esp8266/Arduino/tree/master/libraries/ArduinoOTA
 
 #define SD_CS 15           //for SD card reader
+
+#if HAS_SDIO_CLASS
+  #define SD_CONFIG SdioConfig(FIFO_SDIO)
+#elif ENABLE_DEDICATED_SPI
+  #define SD_CONFIG SdSpiConfig(SD_CS, DEDICATED_SPI)
+#else
+  #define SD_CONFIG SdSpiConfig(SD_CS, SHARED_SPI)
+#endif
 
 #include <Wire.h>        //I2C device 
 #include <RtcDS3231.h>  //https://github.com/Makuna/Rtc
@@ -42,14 +51,13 @@ RtcDS3231<TwoWire> Rtc(Wire);
 #define SETUP_MENU 9
 #define TOTAL_MODES 8 
 
-using namespace sdfat;
 //PIXEL FRAME 
 byte    currentMode = PIXEL_ART_TRAVERSE; //0 - Update Sketch, 1 - Traverse Folders; 2 - Single Folder; 3 - Fill Color; 4 - Clock
 byte    previousMode = 255;    //to resume previous mode after OTA update
 
 //SD FILE SYSTEM
-SdFat     sd; // File system object.
-SdFile    file; // Use for file creation in folders.
+SdFat32   sd; // File system object.
+File32    file; // Use for file creation in folders.
 bool      sdReady = false;
 
 //LED STRIP 
@@ -366,7 +374,7 @@ void setupNeoPixelBoard(){
 }
 
 bool setupSDCard(){
-	return sd.begin(SD_CS, SPI_FULL_SPEED);
+	return sd.begin(SD_CONFIG);
 }
 
 bool isNtpServerNameSafeChar(char c){
@@ -385,7 +393,7 @@ bool loadNtpServerFromSD(){
     return false;
   }
 
-  sdfat::File configFile = sd.open(NTP_SERVER_CONFIG_FILE, O_READ);
+  File32 configFile = sd.open(NTP_SERVER_CONFIG_FILE, O_RDONLY);
   if(!configFile){
     Serial.printf("NTP server: %s (default, config open failed)\n", NTPServerName);
     return false;
@@ -559,7 +567,7 @@ bool loadTimeZoneFile(const char* path){
     return false;
   }
 
-  sdfat::File configFile = sd.open(path, O_READ);
+  File32 configFile = sd.open(path, O_RDONLY);
   if(!configFile){
     return false;
   }
@@ -612,7 +620,7 @@ bool loadTimeZoneCountryFromSD(){
     return false;
   }
 
-  sdfat::File configFile = sd.open(TIME_ZONE_COUNTRY_CONFIG_FILE, O_READ);
+  File32 configFile = sd.open(TIME_ZONE_COUNTRY_CONFIG_FILE, O_RDONLY);
   if(!configFile){
     return false;
   }
@@ -752,7 +760,7 @@ void handleFileUploadForm(){
   server.send(200, "text/html",webpage);
 }
 
-sdfat::File uploadFile; 
+File32 uploadFile;
 void handleFileUpload(){ // upload a new file to the Filing system
   HTTPUpload& upload = server.upload(); // See https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266WebServer/
                                             // For further information on 'status' structure, there are other reasons such as a failed transfer that could be used
@@ -763,15 +771,12 @@ void handleFileUpload(){ // upload a new file to the Filing system
     filename = "/"+filename;
   }
    
-  sdfat::File delfile;
-  
-  if(delfile = sd.open(filename, FILE_WRITE)){
-    delfile.remove();
-    delfile.close();
+  if(sd.exists(filename.c_str())){
+    sd.remove(filename.c_str());
   }
   
     // Remove a previous version, otherwise data is appended the file again
-    uploadFile = sd.open(filename, FILE_WRITE);  // Open the file for writing in SPIFFS (create it, if doesn't exist)
+    uploadFile = sd.open(filename.c_str(), O_RDWR | O_CREAT | O_TRUNC);  // Open the file for writing on the SD card.
   }
   else if (upload.status == UPLOAD_FILE_WRITE)
   { 
@@ -1093,10 +1098,9 @@ bool loadFromSdCard(String path) {
     } else if (path.endsWith(".zip")) {
     dataType = "application/zip";
   }
-  sdfat::File myfile;
-  sd.vwd()->rewind();
+  File32 myfile;
   if(sd.exists(path.c_str()) ){
-    myfile = sd.open(path.c_str(), O_READ);
+    myfile = sd.open(path.c_str(), O_RDONLY);
     server.streamFile( myfile , dataType);
     myfile.close();
     }else{

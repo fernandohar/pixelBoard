@@ -3,6 +3,22 @@
 ESP8266 firmware for a 16x16 NeoPixel matrix with SD-card animations, a DS3231
 RTC clock, web control, OTA updates, games, and a hardware setup menu.
 
+## Arduino / ESP8266 compatibility
+
+This branch targets the ESP8266 Arduino board package **3.1.2** SD stack. The
+firmware uses the bundled ESP8266SdFat-style API:
+
+```cpp
+SdFat32 sd;
+File32 file;
+sd.begin(SdSpiConfig(...));
+```
+
+This replaces the older `SdFat` / `SdFile` usage that worked with ESP8266 board
+package 2.7.4 but caused compile problems with newer ESP8266 cores. If Arduino
+IDE asks which `SdFat.h` to use, prefer the one bundled with the ESP8266 board
+package instead of an old separately installed SdFat library.
+
 ## Menu overview
 
 After flashing the firmware and copying the `SD Card/` contents to the SD card,
