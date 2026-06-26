@@ -27,6 +27,59 @@ time.google.com
 If the file is missing, empty, or cannot be opened, the firmware falls back to
 `pool.ntp.org`.
 
+## Timezone localization
+
+The clock menu uses short city labels because they fit better on the 16x16 LED
+matrix than long timezone names. The firmware starts with a global whole-hour
+offset list, then applies an optional country-specific file from the SD card.
+
+The shipped SD card config selects Canada:
+
+```text
+/timezone_country.conf
+CA
+```
+
+Startup order:
+
+1. Load the built-in global timezone list.
+2. Apply `/timezone_global.conf` from SD card if present.
+3. Read the country code from `/timezone_country.conf`.
+4. Apply `/<COUNTRY>_timezone.conf`, for example `/CA_timezone.conf`.
+
+Country files replace labels for matching offsets. For example, the global list
+may contain:
+
+```text
+LA,-8
+```
+
+Canada can replace the `-8` label with Vancouver:
+
+```text
+YVR,-8
+```
+
+Both of these formats are accepted:
+
+```text
+YVR,-8
+{"YVR", "-8"}
+{"-8", "YVR"}
+```
+
+Included SD-card examples:
+
+```text
+/timezone_global.conf
+/timezone_country.conf
+/CA_timezone.conf
+/US_timezone.conf
+```
+
+Current limitation: this firmware stores whole-hour UTC offsets only. It does
+not automatically apply daylight saving time rules.
+
 ## Hardware wiring
 
 The firmware is written for an ESP8266 Dev board driving a 5V NeoPixel matrix.

@@ -113,23 +113,49 @@ byte NTPBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
 #define HW_BUTTON_REPEAT_DELAY_MS 500
 #define HW_BUTTON_REPEAT_MS 180
 #define HW_RESET_HOLD_MS 3000
+#define TIME_ZONE_LABEL_MAX_LENGTH 7
+#define TIME_ZONE_COUNTRY_CODE_MAX_LENGTH 2
+#define TIME_ZONE_CONFIG_LINE_MAX_LENGTH 32
+#define TIME_ZONE_GLOBAL_CONFIG_FILE "/timezone_global.conf"
+#define TIME_ZONE_COUNTRY_CONFIG_FILE "/timezone_country.conf"
 
 struct TimeZoneSetting {
-  const char* code;
+  char code[TIME_ZONE_LABEL_MAX_LENGTH + 1];
   int8_t offsetHours;
 };
 
-const TimeZoneSetting TIME_ZONES[] = {
-  {"UTC", 0},
-  {"PST", -8},
-  {"MST", -7},
-  {"CST", -6},
-  {"EST", -5},
-  {"GMT", 0},
-  {"CET", 1},
-  {"HKT", 8}
+const TimeZoneSetting DEFAULT_TIME_ZONES[] = {
+  {"BAK", -12},
+  {"PPG", -11},
+  {"HNL", -10},
+  {"ANC", -9},
+  {"LA", -8},
+  {"DEN", -7},
+  {"CHI", -6},
+  {"NYC", -5},
+  {"SCL", -4},
+  {"RIO", -3},
+  {"FEN", -2},
+  {"PDL", -1},
+  {"LON", 0},
+  {"PAR", 1},
+  {"CAI", 2},
+  {"MOW", 3},
+  {"DXB", 4},
+  {"KHI", 5},
+  {"DAC", 6},
+  {"BKK", 7},
+  {"SHA", 8},
+  {"TOK", 9},
+  {"SYD", 10},
+  {"NOU", 11},
+  {"AKL", 12},
+  {"TBU", 13},
+  {"CXI", 14}
 };
-const byte TIME_ZONE_COUNT = sizeof(TIME_ZONES) / sizeof(TIME_ZONES[0]);
+const byte TIME_ZONE_COUNT = sizeof(DEFAULT_TIME_ZONES) / sizeof(DEFAULT_TIME_ZONES[0]);
+TimeZoneSetting timeZones[TIME_ZONE_COUNT];
+char timeZoneCountryCode[TIME_ZONE_COUNTRY_CODE_MAX_LENGTH + 1] = "CA";
 
 bool use24HourClock = true;
 byte timeZoneIndex = 0;
@@ -423,6 +449,234 @@ bool loadNtpServerFromSD(){
   NTPServerName[NTP_SERVER_NAME_MAX_LENGTH] = '\0';
   Serial.printf("NTP server: %s (from SD %s)\n", NTPServerName, NTP_SERVER_CONFIG_FILE);
   return true;
+}
+
+void copyDefaultTimeZones(){
+  for(byte i = 0; i < TIME_ZONE_COUNT; ++i){
+    strncpy(timeZones[i].code, DEFAULT_TIME_ZONES[i].code, TIME_ZONE_LABEL_MAX_LENGTH);
+    timeZones[i].code[TIME_ZONE_LABEL_MAX_LENGTH] = '\0';
+    timeZones[i].offsetHours = DEFAULT_TIME_ZONES[i].offsetHours;
+  }
+}
+
+bool isTimeZoneLabelChar(char c){
+  return (c >= 'A' && c <= 'Z') ||
+    (c >= 'a' && c <= 'z') ||
+    (c >= '0' && c <= '9') ||
+    c == '_' || c == '-';
+}
+
+bool isOffsetToken(const char* token){
+  byte index = 0;
+  if(token[0] == '+' || token[0] == '-'){
+    index = 1;
+  }
+  if(token[index] == '\0'){
+    return false;
+  }
+  while(token[index] != '\0'){
+    if(token[index] < '0' || token[index] > '9'){
+      return false;
+    }
+    index++;
+  }
+  return true;
+}
+
+void uppercaseTimeZoneLabel(char* label){
+  for(byte i = 0; label[i] != '\0'; ++i){
+    if(label[i] >= 'a' && label[i] <= 'z'){
+      label[i] -= 32;
+    }
+  }
+}
+
+int findTimeZoneIndexByOffset(int8_t offsetHours){
+  for(byte i = 0; i < TIME_ZONE_COUNT; ++i){
+    if(timeZones[i].offsetHours == offsetHours){
+      return i;
+    }
+  }
+  return -1;
+}
+
+bool applyTimeZoneLabel(const char* label, int8_t offsetHours){
+  int index = findTimeZoneIndexByOffset(offsetHours);
+  if(index < 0 || label[0] == '\0'){
+    return false;
+  }
+
+  strncpy(timeZones[index].code, label, TIME_ZONE_LABEL_MAX_LENGTH);
+  timeZones[index].code[TIME_ZONE_LABEL_MAX_LENGTH] = '\0';
+  uppercaseTimeZoneLabel(timeZones[index].code);
+  return true;
+}
+
+bool parseTimeZoneConfigLine(char* line, char* label, int8_t* offsetHours){
+  char tokens[2][TIME_ZONE_CONFIG_LINE_MAX_LENGTH + 1] = {{0}, {0}};
+  byte tokenCount = 0;
+  byte tokenLength = 0;
+  bool inToken = false;
+
+  for(byte i = 0; line[i] != '\0' && line[i] != '#'; ++i){
+    char c = line[i];
+    bool tokenChar = isTimeZoneLabelChar(c) || c == '+';
+    if(tokenChar){
+      if(tokenCount < 2 && tokenLength < TIME_ZONE_CONFIG_LINE_MAX_LENGTH){
+        tokens[tokenCount][tokenLength++] = c;
+      }
+      inToken = true;
+    }else if(inToken){
+      if(tokenCount < 2){
+        tokens[tokenCount][tokenLength] = '\0';
+        tokenCount++;
+      }
+      tokenLength = 0;
+      inToken = false;
+    }
+  }
+
+  if(inToken && tokenCount < 2){
+    tokens[tokenCount][tokenLength] = '\0';
+    tokenCount++;
+  }
+
+  if(tokenCount < 2){
+    return false;
+  }
+
+  if(isOffsetToken(tokens[0])){
+    *offsetHours = atoi(tokens[0]);
+    strncpy(label, tokens[1], TIME_ZONE_LABEL_MAX_LENGTH);
+  }else if(isOffsetToken(tokens[1])){
+    *offsetHours = atoi(tokens[1]);
+    strncpy(label, tokens[0], TIME_ZONE_LABEL_MAX_LENGTH);
+  }else{
+    return false;
+  }
+
+  label[TIME_ZONE_LABEL_MAX_LENGTH] = '\0';
+  return *offsetHours >= -12 && *offsetHours <= 14;
+}
+
+bool loadTimeZoneFile(const char* path){
+  if(!sdReady || !sd.exists(path)){
+    return false;
+  }
+
+  sdfat::File configFile = sd.open(path, O_READ);
+  if(!configFile){
+    return false;
+  }
+
+  char line[TIME_ZONE_CONFIG_LINE_MAX_LENGTH + 1] = {0};
+  byte lineLength = 0;
+  byte appliedCount = 0;
+  int input;
+
+  while((input = configFile.read()) >= 0){
+    char c = (char)input;
+    if(c == '\r'){
+      continue;
+    }
+    if(c == '\n'){
+      line[lineLength] = '\0';
+      char label[TIME_ZONE_LABEL_MAX_LENGTH + 1] = {0};
+      int8_t offsetHours = 0;
+      if(parseTimeZoneConfigLine(line, label, &offsetHours) && applyTimeZoneLabel(label, offsetHours)){
+        appliedCount++;
+      }
+      lineLength = 0;
+      line[0] = '\0';
+      continue;
+    }
+    if(lineLength < TIME_ZONE_CONFIG_LINE_MAX_LENGTH){
+      line[lineLength++] = c;
+    }
+  }
+
+  if(lineLength > 0){
+    line[lineLength] = '\0';
+    char label[TIME_ZONE_LABEL_MAX_LENGTH + 1] = {0};
+    int8_t offsetHours = 0;
+    if(parseTimeZoneConfigLine(line, label, &offsetHours) && applyTimeZoneLabel(label, offsetHours)){
+      appliedCount++;
+    }
+  }
+
+  configFile.close();
+  Serial.printf("Timezone config %s applied %d entries\n", path, appliedCount);
+  return appliedCount > 0;
+}
+
+bool loadTimeZoneCountryFromSD(){
+  strncpy(timeZoneCountryCode, "CA", TIME_ZONE_COUNTRY_CODE_MAX_LENGTH);
+  timeZoneCountryCode[TIME_ZONE_COUNTRY_CODE_MAX_LENGTH] = '\0';
+
+  if(!sdReady || !sd.exists(TIME_ZONE_COUNTRY_CONFIG_FILE)){
+    return false;
+  }
+
+  sdfat::File configFile = sd.open(TIME_ZONE_COUNTRY_CONFIG_FILE, O_READ);
+  if(!configFile){
+    return false;
+  }
+
+  byte length = 0;
+  int input;
+  while((input = configFile.read()) >= 0){
+    char c = (char)input;
+    if(c == '#'){
+      break;
+    }
+    if(c == '\r' || c == '\n'){
+      if(length > 0){
+        break;
+      }
+      continue;
+    }
+    if(c == ' ' || c == '\t'){
+      if(length == 0){
+        continue;
+      }
+      break;
+    }
+    if(length < TIME_ZONE_COUNTRY_CODE_MAX_LENGTH && isTimeZoneLabelChar(c)){
+      timeZoneCountryCode[length++] = c;
+    }
+  }
+
+  configFile.close();
+  if(length == 0){
+    strncpy(timeZoneCountryCode, "CA", TIME_ZONE_COUNTRY_CODE_MAX_LENGTH);
+    timeZoneCountryCode[TIME_ZONE_COUNTRY_CODE_MAX_LENGTH] = '\0';
+    return false;
+  }
+  timeZoneCountryCode[length] = '\0';
+  uppercaseTimeZoneLabel(timeZoneCountryCode);
+  return length > 0;
+}
+
+void loadTimeZonesFromSD(){
+  copyDefaultTimeZones();
+
+  if(!sdReady){
+    Serial.println("Timezone config: defaults only (SD unavailable)");
+    return;
+  }
+
+  loadTimeZoneFile(TIME_ZONE_GLOBAL_CONFIG_FILE);
+  loadTimeZoneCountryFromSD();
+
+  char countryFile[24] = "/";
+  strncat(countryFile, timeZoneCountryCode, TIME_ZONE_COUNTRY_CODE_MAX_LENGTH);
+  strncat(countryFile, "_timezone.conf", sizeof(countryFile) - strlen(countryFile) - 1);
+
+  if(loadTimeZoneFile(countryFile)){
+    Serial.printf("Timezone country: %s\n", timeZoneCountryCode);
+  }else{
+    Serial.printf("Timezone country file not loaded: %s\n", countryFile);
+  }
 }
 
 //[Section] RTC (Real time clock) module
@@ -733,7 +987,7 @@ String getCurrentMenuLabel(){
     if(setupMenuCursor == 1) return use24HourClock ? "24 HOUR ON" : "12 HOUR ON";
     if(setupMenuCursor == 2) return "USE RTC";
     if(setupMenuCursor == 3){
-      snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s %+d", TIME_ZONES[timeZoneIndex].code, TIME_ZONES[timeZoneIndex].offsetHours);
+      snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s %+d", timeZones[timeZoneIndex].code, timeZones[timeZoneIndex].offsetHours);
       return String(menuTextBuffer);
     }
     return "BACK";
@@ -823,12 +1077,12 @@ void adjustTimeZone(int8_t direction){
 }
 
 void showTimeZone(unsigned long currentMillis){
-  snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s %+d", TIME_ZONES[timeZoneIndex].code, TIME_ZONES[timeZoneIndex].offsetHours);
+  snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s %+d", timeZones[timeZoneIndex].code, timeZones[timeZoneIndex].offsetHours);
   pixelMenu.showText(String(menuTextBuffer), currentMillis, GREEN);
 }
 
 void setRtcTimeFromUnix(uint32_t unixTime){
-  long secondsOfDay = (long)(unixTime % 86400UL) + ((long)TIME_ZONES[timeZoneIndex].offsetHours * 3600L);
+  long secondsOfDay = (long)(unixTime % 86400UL) + ((long)timeZones[timeZoneIndex].offsetHours * 3600L);
   while(secondsOfDay < 0){
     secondsOfDay += 86400L;
   }
@@ -911,7 +1165,7 @@ void selectTimeMenu(unsigned long currentMillis){
     if(WiFi.status() != WL_CONNECTED){
       showMenuMessage("SETUP WIFI FIRST", MENU_TIME, currentMillis);
     }else if(syncRtcWithNtp(currentMillis)){
-      snprintf(menuTextBuffer, sizeof(menuTextBuffer), "RTC %s %+d", TIME_ZONES[timeZoneIndex].code, TIME_ZONES[timeZoneIndex].offsetHours);
+      snprintf(menuTextBuffer, sizeof(menuTextBuffer), "RTC %s %+d", timeZones[timeZoneIndex].code, timeZones[timeZoneIndex].offsetHours);
       showMenuMessage(String(menuTextBuffer), MENU_TIME, millis());
     }else{
       showMenuMessage("NTP FAILED", MENU_TIME, millis());
@@ -1322,6 +1576,7 @@ void setup() {
     
   }
   loadNtpServerFromSD();
+  loadTimeZonesFromSD();
   EEPROM.begin(512);
   restorePreviousState(); 
 
