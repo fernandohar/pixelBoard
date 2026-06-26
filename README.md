@@ -10,6 +10,10 @@ the board boots into the last saved display mode. If there is no saved mode yet,
 it starts in pixel-art traverse mode when the SD card is available, or clock mode
 when it is not.
 
+Editable copies of the browser controller pages live in `resources/web/`. The
+runtime copies remain in `SD Card/`, because the ESP8266 serves
+`pixBoardController.htm` and `gameController.htm` directly from the SD card.
+
 The hardware **Reset/Menu** button is a software menu button:
 
 - Short press outside the menu: open the setup menu.
