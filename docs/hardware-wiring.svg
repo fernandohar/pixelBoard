@@ -68,7 +68,7 @@
   <text class="label" x="70" y="750">Recommended wiring: 3.3V -> 10k pullup -> GPIO -> button -> GND.</text>
   <text class="label" x="70" y="785">Optional: 100 nF capacitor from GPIO to GND for hardware debounce.</text>
   <text class="label" x="70" y="820">Buttons: Reset/Menu, Select, Up, Down. Do not connect GPIO to 5V.</text>
-  <text class="label" x="70" y="855">Set HW_BUTTON_*_PIN values in bmpBoardWithOTA.ino before flashing.</text>
+  <text class="label" x="70" y="855">Set HW_BUTTON_*_PIN values in pixelBoard.ino before flashing.</text>
 
   <rect class="warn" x="850" y="660" width="475" height="185"/>
   <text class="box-title" x="875" y="700" fill="#d71920">Pin cautions</text>

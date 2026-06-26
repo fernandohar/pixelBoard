@@ -86,7 +86,7 @@ Off-the-shelf defaults in this branch:
 - Button GPIOs: disabled until `HW_BUTTON_*_PIN` values are configured
 
 The menu implementation is split into [`setupMenu.h`](setupMenu.h) and included
-from `bmpBoardWithOTA.ino`. Arduino supports multiple `.ino` sketch tabs, but an
+from `pixelBoard.ino`. Arduino supports multiple `.ino` sketch tabs, but an
 explicit header include keeps this project from depending on Arduino's `.ino`
 concatenation order.
 
@@ -277,7 +277,7 @@ Optional button parts:
 | 100 nF capacitor | GPIO input to GND | Optional hardware debounce/noise filtering. |
 | 220 ohm to 1k resistor | In series with GPIO input | Optional protection against wiring mistakes. |
 
-Configure the button GPIOs in `bmpBoardWithOTA.ino` before flashing:
+Configure the button GPIOs in `pixelBoard.ino` before flashing:
 
 ```cpp
 #define HW_BUTTON_RESET_PIN  -1
