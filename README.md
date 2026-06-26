@@ -37,8 +37,9 @@ The hardware **Reset/Menu** button is a software menu button:
 - Hold for 3 seconds: save state and restart the ESP8266.
 
 The hardware **Up** and **Down** buttons move through menu items. Outside the
-menu, they cycle the board display modes. Long labels scroll across the 16x16
-matrix.
+menu, they cycle the board display modes, except in Mood Light mode where they
+change the active solid color or RGB randomizer preset. Long labels scroll
+across the 16x16 matrix.
 
 Menu tree:
 
@@ -316,6 +317,7 @@ the required reset pullup.
 | State | Reset/Menu | Select | Up | Down |
 | --- | --- | --- | --- | --- |
 | Normal display/game mode | Short press opens menu; 3 second hold restarts | No action | Previous board mode | Next board mode |
+| Mood Light mode | Short press opens menu; 3 second hold restarts | Next board mode | Previous mood preset | Next mood preset |
 | Setup menu | Back/exit; 3 second hold restarts | Select item | Previous item / increase value | Next item / decrease value |
 
 Current board mode order:
@@ -329,4 +331,8 @@ Snake
 Tetris
 Game of Life
 Arkanoid
+Mood Light / RGB Randomizer
 ```
+
+Mood Light presets include solid colors, warm white, animated rainbow gradients,
+blocky rainbow patterns, random RGB pixels, and sparkle-style randomized color.

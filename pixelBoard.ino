@@ -32,6 +32,7 @@ RtcDS3231<TwoWire> Rtc(Wire);
 #include "pixelBoard.h"
 #include "pixelClock.h"
 #include "pixelMenu.h"
+#include "pixelMood.h"
 #include "pixelArt.h"
 #include "gameSnake.h"
 #include "gameTetris.h" //Original game from: https://github.com/scout119/RGB123/tree/master/Tetris
@@ -48,8 +49,9 @@ RtcDS3231<TwoWire> Rtc(Wire);
 #define GAME_TETRIS 6 
 #define GAME_OF_LIFE 7
 #define GAME_ARKANOID 8
-#define SETUP_MENU 9
-#define TOTAL_MODES 8 
+#define MOOD_LIGHT 9
+#define SETUP_MENU 10
+#define TOTAL_MODES 9
 
 //PIXEL FRAME 
 byte    currentMode = PIXEL_ART_TRAVERSE; //0 - Update Sketch, 1 - Traverse Folders; 2 - Single Folder; 3 - Fill Color; 4 - Clock
@@ -83,6 +85,7 @@ GameSnake gameSnake = GameSnake(&strip, 3, &pixelBoardController);
 GameTetris gameTetris = GameTetris(&strip, &pixelBoardController);
 GameOfLife gameOfLife = GameOfLife(&strip, &pixelBoardController);
 GameArkanoid gameArkanoid = GameArkanoid(&strip, &pixelBoardController);
+PixelMood pixelMood = PixelMood(&strip);
 
 PixelArt pixelArt = PixelArt(&strip, &sd, &pixelBoardController);
 PixelClock pixelClock = PixelClock(&strip, &Rtc);
@@ -102,6 +105,7 @@ byte NTPBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
 #define EEPROM_TIME_ZONE_ADDRESS 8
 #define EEPROM_WIFI_CLOCK_ADDRESS 9
 #define EEPROM_WIFI_SETUP_MESSAGE_ADDRESS 10
+#define EEPROM_MOOD_PRESET_ADDRESS 11
 #define WIFI_SETUP_MESSAGE_MS 6500
 
 // ESP8266 projects with NeoPixel + SD/SPI + I2C are pin constrained.
@@ -232,6 +236,7 @@ void saveCurrentState(){
   EEPROM.write(EEPROM_CLOCK_FORMAT_ADDRESS, use24HourClock ? 1 : 0);
   EEPROM.write(EEPROM_TIME_ZONE_ADDRESS, timeZoneIndex);
   EEPROM.write(EEPROM_WIFI_CLOCK_ADDRESS, wifiClockEnabled ? 1 : 0);
+  EEPROM.write(EEPROM_MOOD_PRESET_ADDRESS, pixelMood.getPreset());
 
   EEPROM.commit();
 }
@@ -264,6 +269,10 @@ void restorePreviousState(){
   byte storedWifiClock = readEEPROM(EEPROM_WIFI_CLOCK_ADDRESS);
   wifiClockEnabled = storedWifiClock == 0 ? false : true;
   wifiSetupPortalRequested = readEEPROM(EEPROM_WIFI_SETUP_MESSAGE_ADDRESS) == 1;
+  byte storedMoodPreset = readEEPROM(EEPROM_MOOD_PRESET_ADDRESS);
+  if(storedMoodPreset < MOOD_PRESET_COUNT){
+    pixelMood.setPreset(storedMoodPreset);
+  }
   setCurrentMode(mode);
 }
 
@@ -303,6 +312,8 @@ void setCurrentMode(byte mode, bool persistState){
 		gameOfLife.reset();
 	}else if (mode == GAME_ARKANOID){
     gameArkanoid.reset();
+	}else if (mode == MOOD_LIGHT){
+    pixelMood.reset();
 	}
   if(persistState && mode != SETUP_MENU){
 	  saveCurrentState();
@@ -997,10 +1008,22 @@ void loop() {
     updateSetupMenu(loopTimerTemp);
   }else{
     if(currentMode != OTA_UPDATE){
-      if(hardwareUpPressed){
-        setPreviousMode();
-      }else if(hardwareDownPressed){
-        setNextMode();
+      if(currentMode == MOOD_LIGHT){
+        if(hardwareSelectShort){
+          setNextMode();
+        }else if(hardwareUpPressed){
+          pixelMood.previousPreset();
+          saveCurrentState();
+        }else if(hardwareDownPressed){
+          pixelMood.nextPreset();
+          saveCurrentState();
+        }
+      }else{
+        if(hardwareUpPressed){
+          setPreviousMode();
+        }else if(hardwareDownPressed){
+          setNextMode();
+        }
       }
     }
  
@@ -1045,6 +1068,8 @@ void loop() {
     pixelBoard.update(loopTimerTemp); //Fill Board
   }else if (currentMode == CLOCK){
     pixelClock.update(loopTimerTemp); //Show Clock
+  }else if (currentMode == MOOD_LIGHT){
+    pixelMood.update(loopTimerTemp); //Mood light / RGB randomizer
   }
   }
   if(wifiClockEnabled && WiFi.status() == WL_CONNECTED && loopTimerTemp - ntpTimer > 300000){
