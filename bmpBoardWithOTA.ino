@@ -737,7 +737,7 @@ void readRTC(){
 }
 
 //File Upload -- https://github.com/G6EJD/ESP32-8266-File-Upload/blob/master/ESP_File_Download_Upload.ino
-void File_Upload(){
+void handleFileUploadForm(){
  String webpage  = "<html><body>";
   webpage += F("<h3>Select File to Upload</h3>"); 
   webpage += F("<FORM action='/fupload' method='post' enctype='multipart/form-data'>");
@@ -1264,7 +1264,7 @@ void setup() {
 
   server.on("/snakeGame", handleGameSnakeMode);
   server.on("/gameSnake", handleGameSnakeMode);
-  server.on("/upload",File_Upload);
+  server.on("/upload", handleFileUploadForm);
   server.on("/fupload",  HTTP_POST,[](){ server.send(200);}, handleFileUpload);
   server.onNotFound(handleNotFound);
   server.begin(); //Web Server
