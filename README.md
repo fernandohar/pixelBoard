@@ -27,6 +27,24 @@ time.google.com
 If the file is missing, empty, or cannot be opened, the firmware falls back to
 `pool.ntp.org`.
 
+## Clock menu
+
+The Time menu shows a single WiFi clock setting instead of separate manual/NTP
+items:
+
+```text
+WIFI CLOCK - ON
+WIFI CLOCK - OFF
+```
+
+Press `Select` on that item to open an ON/OFF picker. Use `Up` or `Down` to
+change the selection, then press `Select` again to save and return to the Time
+menu.
+
+When WiFi clock is `ON`, NTP responses update the DS3231 RTC using the selected
+timezone offset. When it is `OFF`, the RTC keeps running by itself and the
+firmware does not request periodic NTP time updates.
+
 ## Timezone localization
 
 The clock menu uses short city labels because they fit better on the 16x16 LED

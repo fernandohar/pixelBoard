@@ -92,6 +92,7 @@ byte NTPBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
 
 #define EEPROM_CLOCK_FORMAT_ADDRESS 7
 #define EEPROM_TIME_ZONE_ADDRESS 8
+#define EEPROM_WIFI_CLOCK_ADDRESS 9
 
 // ESP8266 projects with NeoPixel + SD/SPI + I2C are pin constrained.
 // Set these to GPIO numbers that are free on your board before flashing.
@@ -158,6 +159,8 @@ TimeZoneSetting timeZones[TIME_ZONE_COUNT];
 char timeZoneCountryCode[TIME_ZONE_COUNTRY_CODE_MAX_LENGTH + 1] = "CA";
 
 bool use24HourClock = true;
+bool wifiClockEnabled = true;
+bool wifiClockSelection = true;
 byte timeZoneIndex = 0;
 
 enum HardwareButtonId {
@@ -197,7 +200,8 @@ enum SetupMenuScreen {
   MENU_TIME = 2,
   MENU_MANUAL_TIME = 3,
   MENU_TIME_ZONE = 4,
-  MENU_MESSAGE = 5
+  MENU_MESSAGE = 5,
+  MENU_WIFI_CLOCK = 6
 };
 
 byte modeBeforeMenu = CLOCK;
@@ -232,6 +236,7 @@ void saveCurrentState(){
   EEPROM.write(6, pixelArt.currentFolderPointer);
   EEPROM.write(EEPROM_CLOCK_FORMAT_ADDRESS, use24HourClock ? 1 : 0);
   EEPROM.write(EEPROM_TIME_ZONE_ADDRESS, timeZoneIndex);
+  EEPROM.write(EEPROM_WIFI_CLOCK_ADDRESS, wifiClockEnabled ? 1 : 0);
 
   EEPROM.commit();
 }
@@ -261,6 +266,8 @@ void restorePreviousState(){
   if(timeZoneIndex >= TIME_ZONE_COUNT){
     timeZoneIndex = 0;
   }
+  byte storedWifiClock = readEEPROM(EEPROM_WIFI_CLOCK_ADDRESS);
+  wifiClockEnabled = storedWifiClock == 0 ? false : true;
   setCurrentMode(mode);
 }
 
@@ -963,7 +970,7 @@ byte getMenuItemCount(){
     return 4;
   }
   if(setupMenuScreen == MENU_TIME){
-    return 5;
+    return 4;
   }
   return 3;
 }
@@ -983,10 +990,9 @@ String getCurrentMenuLabel(){
   }
 
   if(setupMenuScreen == MENU_TIME){
-    if(setupMenuCursor == 0) return "MANUAL TIME";
+    if(setupMenuCursor == 0) return wifiClockEnabled ? "WIFI CLOCK - ON" : "WIFI CLOCK - OFF";
     if(setupMenuCursor == 1) return use24HourClock ? "24 HOUR ON" : "12 HOUR ON";
-    if(setupMenuCursor == 2) return "USE RTC";
-    if(setupMenuCursor == 3){
+    if(setupMenuCursor == 2){
       snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s %+d", timeZones[timeZoneIndex].code, timeZones[timeZoneIndex].offsetHours);
       return String(menuTextBuffer);
     }
@@ -1057,6 +1063,33 @@ void showManualTime(unsigned long currentMillis){
     snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%02d%02d", manualHour, manualMinute);
   }
   pixelMenu.showText(String(menuTextBuffer), currentMillis, ORANGE);
+}
+
+void startWifiClockSelection(){
+  wifiClockSelection = wifiClockEnabled;
+  setupMenuScreen = MENU_WIFI_CLOCK;
+  pixelMenu.reset();
+}
+
+void toggleWifiClockSelection(){
+  wifiClockSelection = !wifiClockSelection;
+  pixelMenu.reset();
+}
+
+void saveWifiClockSelection(){
+  wifiClockEnabled = wifiClockSelection;
+  saveCurrentState();
+  if(wifiClockEnabled && WiFi.status() == WL_CONNECTED){
+    WiFi.hostByName(NTPServerName, timeServerIP);
+    sendNTPpacket(timeServerIP);
+  }
+  setupMenuScreen = MENU_TIME;
+  setupMenuCursor = 0;
+  pixelMenu.reset();
+}
+
+void showWifiClockSelection(unsigned long currentMillis){
+  pixelMenu.showText(wifiClockSelection ? "ON" : "OFF", currentMillis, wifiClockSelection ? GREEN : RED);
 }
 
 void adjustTimeZone(int8_t direction){
@@ -1155,22 +1188,13 @@ void selectWifiMenu(unsigned long currentMillis){
 
 void selectTimeMenu(unsigned long currentMillis){
   if(setupMenuCursor == 0){
-    startManualTime();
+    startWifiClockSelection();
   }else if(setupMenuCursor == 1){
     use24HourClock = !use24HourClock;
     pixelClock.setUse24Hour(use24HourClock);
     saveCurrentState();
     showMenuMessage(use24HourClock ? "24 HOUR ON" : "12 HOUR ON", MENU_TIME, currentMillis);
   }else if(setupMenuCursor == 2){
-    if(WiFi.status() != WL_CONNECTED){
-      showMenuMessage("SETUP WIFI FIRST", MENU_TIME, currentMillis);
-    }else if(syncRtcWithNtp(currentMillis)){
-      snprintf(menuTextBuffer, sizeof(menuTextBuffer), "RTC %s %+d", timeZones[timeZoneIndex].code, timeZones[timeZoneIndex].offsetHours);
-      showMenuMessage(String(menuTextBuffer), MENU_TIME, millis());
-    }else{
-      showMenuMessage("NTP FAILED", MENU_TIME, millis());
-    }
-  }else if(setupMenuCursor == 3){
     setupMenuScreen = MENU_TIME_ZONE;
     pixelMenu.reset();
   }else{
@@ -1189,9 +1213,11 @@ void selectSetupMenu(unsigned long currentMillis){
     selectTimeMenu(currentMillis);
   }else if(setupMenuScreen == MENU_MANUAL_TIME){
     selectManualTime(currentMillis);
+  }else if(setupMenuScreen == MENU_WIFI_CLOCK){
+    saveWifiClockSelection();
   }else if(setupMenuScreen == MENU_TIME_ZONE){
     setupMenuScreen = MENU_TIME;
-    setupMenuCursor = 3;
+    setupMenuCursor = 2;
     saveCurrentState();
     showMenuMessage("TZ SAVED", MENU_TIME, currentMillis);
   }
@@ -1203,10 +1229,10 @@ void handleSetupMenuBack(){
   }else if(setupMenuScreen == MENU_WIFI || setupMenuScreen == MENU_TIME){
     setupMenuScreen = MENU_ROOT;
     setupMenuCursor = 0;
-  }else if(setupMenuScreen == MENU_MANUAL_TIME || setupMenuScreen == MENU_TIME_ZONE){
+  }else if(setupMenuScreen == MENU_MANUAL_TIME || setupMenuScreen == MENU_TIME_ZONE || setupMenuScreen == MENU_WIFI_CLOCK){
     byte previousScreen = setupMenuScreen;
     setupMenuScreen = MENU_TIME;
-    setupMenuCursor = previousScreen == MENU_TIME_ZONE ? 3 : 0;
+    setupMenuCursor = previousScreen == MENU_TIME_ZONE ? 2 : 0;
   }else if(setupMenuScreen == MENU_MESSAGE){
     setupMenuScreen = setupMenuMessageReturnScreen;
   }
@@ -1221,6 +1247,8 @@ void handleSetupMenuButtons(unsigned long currentMillis){
   if(hardwareUpPressed){
     if(setupMenuScreen == MENU_MANUAL_TIME){
       adjustManualTime(1);
+    }else if(setupMenuScreen == MENU_WIFI_CLOCK){
+      toggleWifiClockSelection();
     }else if(setupMenuScreen == MENU_TIME_ZONE){
       adjustTimeZone(1);
     }else if(setupMenuScreen != MENU_MESSAGE){
@@ -1231,6 +1259,8 @@ void handleSetupMenuButtons(unsigned long currentMillis){
   if(hardwareDownPressed){
     if(setupMenuScreen == MENU_MANUAL_TIME){
       adjustManualTime(-1);
+    }else if(setupMenuScreen == MENU_WIFI_CLOCK){
+      toggleWifiClockSelection();
     }else if(setupMenuScreen == MENU_TIME_ZONE){
       adjustTimeZone(-1);
     }else if(setupMenuScreen != MENU_MESSAGE){
@@ -1255,6 +1285,11 @@ void updateSetupMenu(unsigned long currentMillis){
 
   if(setupMenuScreen == MENU_MANUAL_TIME){
     showManualTime(currentMillis);
+    return;
+  }
+
+  if(setupMenuScreen == MENU_WIFI_CLOCK){
+    showWifiClockSelection(currentMillis);
     return;
   }
 
@@ -1360,7 +1395,7 @@ void loop() {
     pixelClock.update(loopTimerTemp); //Show Clock
   }
   }
-  if(loopTimerTemp - ntpTimer > 300000){
+  if(wifiClockEnabled && WiFi.status() == WL_CONNECTED && loopTimerTemp - ntpTimer > 300000){
 	ntpTimer = loopTimerTemp;
 	 sendNTPpacket(timeServerIP);               // Send an NTP request
   }
@@ -1375,6 +1410,10 @@ void loop() {
 		prevActualTime = actualTime;
 		Serial.printf("\rUTC time:\t%d:%d:%d   \n", getHours(actualTime), getMinutes(actualTime), getSeconds(actualTime));
 	}  
+    if(wifiClockEnabled){
+      setRtcTimeFromUnix(timeUNIX);
+      Serial.println("RTC synced from WiFi clock");
+    }
   }
 }
 
@@ -1592,7 +1631,7 @@ void setup() {
   connectWiFi();
 
   if(WiFi.status() == WL_CONNECTED){
-	//Sync RTC with NTP;
+	// Start UDP so WiFi clock can sync RTC from NTP when enabled.
 	
 	Serial.println("Starting UDP");
 	UDP.begin(123);                          // Start listening for UDP messages on port 123
@@ -1603,8 +1642,10 @@ void setup() {
 	 Serial.print("Time server IP:\t");
 	Serial.println(timeServerIP);
   
-	Serial.println("\r\nSending NTP request ...");
-	sendNTPpacket(timeServerIP);  
+  if(wifiClockEnabled){
+	  Serial.println("\r\nSending NTP request ...");
+	  sendNTPpacket(timeServerIP);
+  }
 	webSocket.begin();
 	webSocket.onEvent(webSocketEvent);
 
