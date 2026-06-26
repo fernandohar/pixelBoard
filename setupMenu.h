@@ -265,8 +265,12 @@ void selectWifiMenu(unsigned long currentMillis){
     showMenuMessage((WiFi.status() == WL_CONNECTED && ssid.length() > 0) ? ssid : "NO SSID", MENU_WIFI, currentMillis);
   }else if(setupMenuCursor == 2){
     wifiManager.resetSettings();
-    pendingRestartAt = currentMillis + 2200;
-    showMenuMessage("WIFI SETUP RESTART", MENU_WIFI, currentMillis);
+    wifiSetupPortalRequested = true;
+    EEPROM.write(EEPROM_WIFI_SETUP_MESSAGE_ADDRESS, 1);
+    EEPROM.commit();
+    pendingRestartAt = currentMillis + WIFI_SETUP_MESSAGE_MS + 500;
+    showMenuMessage(getWifiSetupInstruction(), MENU_WIFI, currentMillis);
+    setupMenuMessageUntil = currentMillis + WIFI_SETUP_MESSAGE_MS;
   }else{
     setupMenuScreen = MENU_ROOT;
     setupMenuCursor = 0;

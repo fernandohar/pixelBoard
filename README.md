@@ -35,7 +35,10 @@ MENU
 |   |     Shows the current WiFi SSID, or NO SSID.
 |   |-- CONNECT SSID
 |   |     Clears saved WiFi credentials and restarts.
+|   |     The matrix scrolls:
+|   |     WIFI CREDENTIAL CLEARED CONNECT TO pixelboard_XXXXXX TO SETUP WIFI
 |   |     On next boot, WiFiManager opens the setup portal.
+|   |     Connect your phone/computer to pixelboard_XXXXXX, then choose WiFi.
 |   `-- BACK
 |
 |-- TIME

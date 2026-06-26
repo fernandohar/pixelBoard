@@ -93,6 +93,8 @@ byte NTPBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
 #define EEPROM_CLOCK_FORMAT_ADDRESS 7
 #define EEPROM_TIME_ZONE_ADDRESS 8
 #define EEPROM_WIFI_CLOCK_ADDRESS 9
+#define EEPROM_WIFI_SETUP_MESSAGE_ADDRESS 10
+#define WIFI_SETUP_MESSAGE_MS 6500
 
 // ESP8266 projects with NeoPixel + SD/SPI + I2C are pin constrained.
 // Set these to GPIO numbers that are free on your board before flashing.
@@ -161,6 +163,7 @@ char timeZoneCountryCode[TIME_ZONE_COUNTRY_CODE_MAX_LENGTH + 1] = "CA";
 bool use24HourClock = true;
 bool wifiClockEnabled = true;
 bool wifiClockSelection = true;
+bool wifiSetupPortalRequested = false;
 byte timeZoneIndex = 0;
 
 enum HardwareButtonId {
@@ -252,6 +255,7 @@ void restorePreviousState(){
   }
   byte storedWifiClock = readEEPROM(EEPROM_WIFI_CLOCK_ADDRESS);
   wifiClockEnabled = storedWifiClock == 0 ? false : true;
+  wifiSetupPortalRequested = readEEPROM(EEPROM_WIFI_SETUP_MESSAGE_ADDRESS) == 1;
   setCurrentMode(mode);
 }
 
@@ -795,6 +799,26 @@ void handleFileUpload(){ // upload a new file to the Filing system
 }
 
 //[Section] Wifi Management
+void formatDeviceName(char* deviceName, size_t deviceNameSize){
+  snprintf(deviceName, deviceNameSize, "pixelboard_%06X", ESP.getChipId());
+}
+
+String getWifiSetupInstruction(){
+  char deviceName[30] = {0};
+  formatDeviceName(deviceName, sizeof(deviceName));
+  return String("WIFI CREDENTIAL CLEARED CONNECT TO ") + deviceName + " TO SETUP WIFI";
+}
+
+void showScrollingMessage(const String& message, unsigned long durationMs, uint32_t color){
+  unsigned long startedAt = millis();
+  pixelMenu.reset();
+  while(millis() - startedAt < durationMs){
+    pixelMenu.showText(message, millis(), color);
+    delay(40);
+    yield();
+  }
+}
+
 void connectWiFi(){
   //if(needRestart){
 //    Serial.println("********************Reset ESP");
@@ -806,8 +830,13 @@ void connectWiFi(){
 	reconnectWifiFlag = false;
     Serial.println("[Begin] wifi Manager Auto Connect");
 	char deviceName[30] = {0}; 
-	sprintf(deviceName, "pixelboard_%06X", ESP.getChipId());
+	formatDeviceName(deviceName, sizeof(deviceName));
 	Serial.printf("Device name: [%s]\n", deviceName);
+    if(wifiSetupPortalRequested){
+      String instruction = getWifiSetupInstruction();
+      Serial.println(instruction);
+      showScrollingMessage(instruction, WIFI_SETUP_MESSAGE_MS, CYAN);
+    }
     wifiManager.autoConnect(deviceName);
 	
     // start MDNS
@@ -817,6 +846,11 @@ void connectWiFi(){
    
     Serial.println("WiFi Connected");
     Serial.println(WiFi.localIP());
+    if(WiFi.status() == WL_CONNECTED && wifiSetupPortalRequested){
+      wifiSetupPortalRequested = false;
+      EEPROM.write(EEPROM_WIFI_SETUP_MESSAGE_ADDRESS, 0);
+      EEPROM.commit();
+    }
     Serial.println("[Complete] wifi Manager Auto Connect");
 
   }
