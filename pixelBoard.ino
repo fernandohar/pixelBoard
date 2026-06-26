@@ -97,9 +97,19 @@ IPAddress timeServerIP;
 #define NTP_SERVER_NAME_MAX_LENGTH 63
 const char* DEFAULT_NTP_SERVER_NAME = "pool.ntp.org";
 const char* NTP_SERVER_CONFIG_FILE = "/ntpserver.txt";
+const char* NTP_INTERVAL_CONFIG_FILE = "/ntpinterval.txt";
 char NTPServerName[NTP_SERVER_NAME_MAX_LENGTH + 1] = "pool.ntp.org";
 const int NTP_PACKET_SIZE = 48;  // NTP time stamp is in the first 48 bytes of the message
 byte NTPBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
+#define NTP_SYNC_DEFAULT_SECONDS 300UL
+#define NTP_SYNC_MIN_SECONDS 30UL
+#define NTP_SYNC_MAX_SECONDS 86400UL
+#define NTP_RESPONSE_TIMEOUT_MS 5000UL
+unsigned long ntpSyncIntervalMs = NTP_SYNC_DEFAULT_SECONDS * 1000UL;
+unsigned long ntpCurrentIntervalMs = NTP_SYNC_DEFAULT_SECONDS * 1000UL;
+unsigned long ntpTimer = 0;
+unsigned long ntpRequestSentAt = 0;
+bool ntpRequestPending = false;
 
 #define EEPROM_CLOCK_FORMAT_ADDRESS 7
 #define EEPROM_TIME_ZONE_ADDRESS 8
@@ -214,6 +224,7 @@ void setCurrentMode(byte mode, bool persistState);
 uint32_t getTime();
 void sendNTPpacket(IPAddress& address);
 void setRtcTimeFromUnix(uint32_t unixTime);
+void scheduleNtpSyncNow();
 void enterSetupMenu();
 void handleSetupMenuBack();
 void handleSetupMenuButtons(unsigned long currentMillis);
@@ -462,6 +473,75 @@ bool loadNtpServerFromSD(){
   strncpy(NTPServerName, line, NTP_SERVER_NAME_MAX_LENGTH);
   NTPServerName[NTP_SERVER_NAME_MAX_LENGTH] = '\0';
   Serial.printf("NTP server: %s (from SD %s)\n", NTPServerName, NTP_SERVER_CONFIG_FILE);
+  return true;
+}
+
+bool loadNtpIntervalFromSD(){
+  ntpSyncIntervalMs = NTP_SYNC_DEFAULT_SECONDS * 1000UL;
+  ntpCurrentIntervalMs = ntpSyncIntervalMs;
+
+  if(!sdReady || !sd.exists(NTP_INTERVAL_CONFIG_FILE)){
+    Serial.printf("NTP interval: %lu seconds (default)\n", ntpSyncIntervalMs / 1000UL);
+    return false;
+  }
+
+  File32 configFile = sd.open(NTP_INTERVAL_CONFIG_FILE, O_RDONLY);
+  if(!configFile){
+    Serial.printf("NTP interval: %lu seconds (default, config open failed)\n", ntpSyncIntervalMs / 1000UL);
+    return false;
+  }
+
+  char value[11] = {0};
+  byte valueLength = 0;
+  bool hasValue = false;
+  bool skipLine = false;
+  int input;
+
+  while((input = configFile.read()) >= 0){
+    char c = (char)input;
+    if(c == '\r'){
+      continue;
+    }
+    if(c == '\n'){
+      if(valueLength > 0){
+        hasValue = true;
+        break;
+      }
+      skipLine = false;
+      continue;
+    }
+    if(skipLine){
+      continue;
+    }
+    if(c == '#'){
+      skipLine = true;
+      continue;
+    }
+    if(c >= '0' && c <= '9' && valueLength < sizeof(value) - 1){
+      value[valueLength++] = c;
+    }else if(valueLength > 0){
+      hasValue = true;
+      break;
+    }
+  }
+
+  configFile.close();
+
+  if(!hasValue && valueLength == 0){
+    Serial.printf("NTP interval: %lu seconds (default, config empty)\n", ntpSyncIntervalMs / 1000UL);
+    return false;
+  }
+
+  unsigned long seconds = strtoul(value, NULL, 10);
+  if(seconds < NTP_SYNC_MIN_SECONDS){
+    seconds = NTP_SYNC_MIN_SECONDS;
+  }else if(seconds > NTP_SYNC_MAX_SECONDS){
+    seconds = NTP_SYNC_MAX_SECONDS;
+  }
+
+  ntpSyncIntervalMs = seconds * 1000UL;
+  ntpCurrentIntervalMs = ntpSyncIntervalMs;
+  Serial.printf("NTP interval: %lu seconds (from SD %s)\n", seconds, NTP_INTERVAL_CONFIG_FILE);
   return true;
 }
 
@@ -972,7 +1052,6 @@ void readHardwareButtons(unsigned long currentMillis){
 #include "setupMenu.h"
 
 unsigned long loopTimerTemp = 0;
-unsigned long ntpTimer = 0;
 
 const char JSON_DEBUGGER_FORMAT[] = "{\"msgType\":\"debugInfo\",\"uptime\":\"%s\",\"sdReady\":%d, \"currentFolderPointer\":%d, \"rootFolderCount\":%d, \"currentMode\":%d, \"displaySpeed\":%d, \"brightness\":%d, \"freeHeap\":%d}";
 const char UPTIMECHAR_FORMAT[] = "%02dd:%02dh:%02dm:%02ds";
@@ -1072,10 +1151,7 @@ void loop() {
     pixelMood.update(loopTimerTemp); //Mood light / RGB randomizer
   }
   }
-  if(wifiClockEnabled && WiFi.status() == WL_CONNECTED && loopTimerTemp - ntpTimer > 300000){
-	ntpTimer = loopTimerTemp;
-	 sendNTPpacket(timeServerIP);               // Send an NTP request
-  }
+  handleNtpSchedule(loopTimerTemp);
   uint32_t time = getTime();                   // Check if an NTP response has arrived and get the (UNIX) time
   if (time) {                                  // If a new timestamp has been received
     timeUNIX = time;
@@ -1089,6 +1165,9 @@ void loop() {
 	}  
     if(wifiClockEnabled){
       setRtcTimeFromUnix(timeUNIX);
+      ntpRequestPending = false;
+      resetNtpBackoff();
+      ntpTimer = loopTimerTemp;
       Serial.println("RTC synced from WiFi clock");
     }
   }
@@ -1272,6 +1351,61 @@ uint32_t getTime() {
   return UNIXTime;
 }
 
+void resetNtpBackoff(){
+  ntpCurrentIntervalMs = ntpSyncIntervalMs;
+}
+
+void increaseNtpBackoff(){
+  unsigned long maxIntervalMs = NTP_SYNC_MAX_SECONDS * 1000UL;
+  if(ntpCurrentIntervalMs > maxIntervalMs / 2){
+    ntpCurrentIntervalMs = maxIntervalMs;
+  }else{
+    ntpCurrentIntervalMs *= 2;
+  }
+  Serial.printf("Next NTP attempt in %lu seconds\n", ntpCurrentIntervalMs / 1000UL);
+}
+
+void scheduleNtpSyncNow(){
+  ntpRequestPending = false;
+  resetNtpBackoff();
+  ntpTimer = millis() - ntpCurrentIntervalMs;
+}
+
+void startNtpRequest(unsigned long currentMillis){
+  if(WiFi.status() != WL_CONNECTED){
+    ntpTimer = currentMillis;
+    ntpRequestPending = false;
+    Serial.println("NTP skipped: WiFi not connected");
+    increaseNtpBackoff();
+    return;
+  }
+
+  WiFi.hostByName(NTPServerName, timeServerIP);
+  Serial.print("NTP request to:\t");
+  Serial.println(timeServerIP);
+  sendNTPpacket(timeServerIP);
+  ntpTimer = currentMillis;
+  ntpRequestSentAt = currentMillis;
+  ntpRequestPending = true;
+}
+
+void handleNtpSchedule(unsigned long currentMillis){
+  if(!wifiClockEnabled){
+    ntpRequestPending = false;
+    return;
+  }
+
+  if(ntpRequestPending && currentMillis - ntpRequestSentAt > NTP_RESPONSE_TIMEOUT_MS){
+    ntpRequestPending = false;
+    Serial.println("NTP response timeout");
+    increaseNtpBackoff();
+  }
+
+  if(!ntpRequestPending && currentMillis - ntpTimer >= ntpCurrentIntervalMs){
+    startNtpRequest(currentMillis);
+  }
+}
+
 void sendNTPpacket(IPAddress& address) {
   memset(NTPBuffer, 0, NTP_PACKET_SIZE);  // set all bytes in the buffer to 0
   // Initialize values needed to form NTP request
@@ -1299,6 +1433,7 @@ void setup() {
     
   }
   loadNtpServerFromSD();
+  loadNtpIntervalFromSD();
   loadTimeZonesFromSD();
   EEPROM.begin(512);
   restorePreviousState(); 
@@ -1327,8 +1462,8 @@ void setup() {
 	Serial.println(timeServerIP);
   
   if(wifiClockEnabled){
-	  Serial.println("\r\nSending NTP request ...");
-	  sendNTPpacket(timeServerIP);
+	  Serial.println("\r\nScheduling NTP request ...");
+	  scheduleNtpSyncNow();
   }
 	webSocket.begin();
 	webSocket.onEvent(webSocketEvent);

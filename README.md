@@ -167,6 +167,25 @@ time.google.com
 If the file is missing, empty, or cannot be opened, the firmware falls back to
 `pool.ntp.org`.
 
+The WiFi clock sync interval defaults to 300 seconds. You can override it from
+the SD card by creating:
+
+```text
+/ntpinterval.txt
+```
+
+Example:
+
+```text
+# NTP sync interval in seconds
+300
+```
+
+The accepted range is 30 to 86400 seconds. If WiFi is disconnected or NTP does
+not respond, the device keeps showing time from the DS3231 RTC and doubles the
+delay before the next NTP attempt. A successful NTP sync resets the delay back
+to the configured interval.
+
 ## Clock menu
 
 The Time menu shows a single WiFi clock setting instead of separate manual/NTP

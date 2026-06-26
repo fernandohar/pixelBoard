@@ -167,9 +167,8 @@ void toggleWifiClockSelection(){
 void saveWifiClockSelection(){
   wifiClockEnabled = wifiClockSelection;
   saveCurrentState();
-  if(wifiClockEnabled && WiFi.status() == WL_CONNECTED){
-    WiFi.hostByName(NTPServerName, timeServerIP);
-    sendNTPpacket(timeServerIP);
+  if(wifiClockEnabled){
+    scheduleNtpSyncNow();
   }
   setupMenuScreen = MENU_TIME;
   setupMenuCursor = 0;
