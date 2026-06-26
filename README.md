@@ -3,6 +3,65 @@
 ESP8266 firmware for a 16x16 NeoPixel matrix with SD-card animations, a DS3231
 RTC clock, web control, OTA updates, games, and a hardware setup menu.
 
+## Menu overview
+
+After flashing the firmware and copying the `SD Card/` contents to the SD card,
+the board boots into the last saved display mode. If there is no saved mode yet,
+it starts in pixel-art traverse mode when the SD card is available, or clock mode
+when it is not.
+
+The hardware **Reset/Menu** button is a software menu button:
+
+- Short press outside the menu: open the setup menu.
+- Short press inside the menu: go back one level, or exit from the root menu.
+- Hold for 3 seconds: save state and restart the ESP8266.
+
+The hardware **Up** and **Down** buttons move through menu items. Outside the
+menu, they cycle the board display modes. Long labels scroll across the 16x16
+matrix.
+
+Menu tree:
+
+```text
+MENU
+|-- WIFI
+|   |-- SHOW IP
+|   |     Shows the current device IP, or NO WIFI.
+|   |-- SHOW SSID
+|   |     Shows the current WiFi SSID, or NO SSID.
+|   |-- CONNECT SSID
+|   |     Clears saved WiFi credentials and restarts.
+|   |     On next boot, WiFiManager opens the setup portal.
+|   `-- BACK
+|
+|-- TIME
+|   |-- WIFI CLOCK - ON/OFF
+|   |   `-- ON / OFF
+|   |       Select this item, use Up/Down to choose ON or OFF,
+|   |       then Select again to save.
+|   |       ON: NTP updates the DS3231 RTC when WiFi is connected.
+|   |       OFF: time depends on the DS3231 RTC module only.
+|   |
+|   |-- 24 HOUR ON / 12 HOUR ON
+|   |     Toggles the clock display format.
+|   |
+|   |-- TIMEZONE
+|   |     Shows a short city label and UTC offset, such as YVR -8.
+|   |     Use Up/Down to change the selected timezone.
+|   |
+|   `-- BACK
+|
+`-- EXIT
+```
+
+Off-the-shelf defaults in this branch:
+
+- NTP server: `pool.ntp.org`
+- WiFi clock: `ON`
+- Timezone country config: Canada (`CA`)
+- Vancouver label: `YVR -8`
+- Button GPIOs: disabled until `HW_BUTTON_*_PIN` values are configured
+
 ## NTP server configuration
 
 The firmware defaults to the public NTP pool:
