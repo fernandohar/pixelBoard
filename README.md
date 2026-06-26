@@ -62,6 +62,11 @@ Off-the-shelf defaults in this branch:
 - Vancouver label: `YVR -8`
 - Button GPIOs: disabled until `HW_BUTTON_*_PIN` values are configured
 
+The menu implementation is split into [`setupMenu.h`](setupMenu.h) and included
+from `bmpBoardWithOTA.ino`. Arduino supports multiple `.ino` sketch tabs, but an
+explicit header include keeps this project from depending on Arduino's `.ino`
+concatenation order.
+
 ## NTP server configuration
 
 The firmware defaults to the public NTP pool:

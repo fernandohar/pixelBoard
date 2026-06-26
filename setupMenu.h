@@ -1,3 +1,6 @@
+#ifndef SETUP_MENU_H
+#define SETUP_MENU_H
+
 enum SetupMenuScreen {
   MENU_ROOT = 0,
   MENU_WIFI = 1,
@@ -392,3 +395,5 @@ void triggerHardwareReset(unsigned long currentMillis){
   delay(500);
   ESP.restart();
 }
+
+#endif

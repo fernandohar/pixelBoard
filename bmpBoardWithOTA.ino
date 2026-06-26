@@ -919,7 +919,7 @@ void readHardwareButtons(unsigned long currentMillis){
   }
 }
 
-// Setup menu implementation lives in setupMenu.ino.
+#include "setupMenu.h"
 
 unsigned long loopTimerTemp = 0;
 unsigned long ntpTimer = 0;
