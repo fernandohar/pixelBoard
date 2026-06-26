@@ -5,6 +5,14 @@ PixelClock:: ~PixelClock(){
 	
 }
 void PixelClock::reset(){};
+void PixelClock::setUse24Hour(bool value){
+  use24Hour = value;
+}
+
+bool PixelClock::getUse24Hour(){
+  return use24Hour;
+}
+
 void PixelClock::update(unsigned long currentMillis){
   if((currentMillis - lastupdate) > 999){
 		lastupdate = currentMillis;
@@ -17,6 +25,12 @@ void PixelClock::update(unsigned long currentMillis){
 	
  
 	 uint8_t hour = dt.Hour();
+    if(!use24Hour){
+      hour = hour % 12;
+      if(hour == 0){
+        hour = 12;
+      }
+    }
     uint8_t minute = dt.Minute();
     
     byte tempDigit1  = hour / 10;

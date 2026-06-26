@@ -21,6 +21,7 @@ RtcDS3231<TwoWire> Rtc(Wire);
 #include "PixelBoardController.h"
 #include "PixelBoard.h"
 #include "PixelClock.h"
+#include "pixelMenu.h"
 #include "PixelArt.h"
 #include "gameSnake.h"
 #include "gameTetris.h" //Original game from: https://github.com/scout119/RGB123/tree/master/Tetris
@@ -37,6 +38,7 @@ RtcDS3231<TwoWire> Rtc(Wire);
 #define GAME_TETRIS 6 
 #define GAME_OF_LIFE 7
 #define GAME_ARKANOID 8
+#define SETUP_MENU 9
 #define TOTAL_MODES 8 
 
 using namespace sdfat;
@@ -75,6 +77,7 @@ GameArkanoid gameArkanoid = GameArkanoid(&strip, &pixelBoardController);
 
 PixelArt pixelArt = PixelArt(&strip, &sd, &pixelBoardController);
 PixelClock pixelClock = PixelClock(&strip, &Rtc);
+PixelMenu pixelMenu = PixelMenu(&strip);
 
 WiFiUDP UDP;
 
@@ -82,6 +85,107 @@ IPAddress timeServerIP;
 const char* NTPServerName = "CORPQEHDC02.corp.ha.org.hk";
 const int NTP_PACKET_SIZE = 48;  // NTP time stamp is in the first 48 bytes of the message
 byte NTPBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
+
+#define EEPROM_CLOCK_FORMAT_ADDRESS 7
+#define EEPROM_TIME_ZONE_ADDRESS 8
+
+// ESP8266 projects with NeoPixel + SD/SPI + I2C are pin constrained.
+// Set these to GPIO numbers that are free on your board before flashing.
+// Use buttons wired to GND; the firmware enables INPUT_PULLUP for each pin.
+#ifndef HW_BUTTON_RESET_PIN
+#define HW_BUTTON_RESET_PIN -1
+#endif
+#ifndef HW_BUTTON_SELECT_PIN
+#define HW_BUTTON_SELECT_PIN -1
+#endif
+#ifndef HW_BUTTON_UP_PIN
+#define HW_BUTTON_UP_PIN -1
+#endif
+#ifndef HW_BUTTON_DOWN_PIN
+#define HW_BUTTON_DOWN_PIN -1
+#endif
+
+#define HW_BUTTON_DEBOUNCE_MS 35
+#define HW_BUTTON_REPEAT_DELAY_MS 500
+#define HW_BUTTON_REPEAT_MS 180
+#define HW_RESET_HOLD_MS 3000
+
+struct TimeZoneSetting {
+  const char* code;
+  int8_t offsetHours;
+};
+
+const TimeZoneSetting TIME_ZONES[] = {
+  {"UTC", 0},
+  {"PST", -8},
+  {"MST", -7},
+  {"CST", -6},
+  {"EST", -5},
+  {"GMT", 0},
+  {"CET", 1},
+  {"HKT", 8}
+};
+const byte TIME_ZONE_COUNT = sizeof(TIME_ZONES) / sizeof(TIME_ZONES[0]);
+
+bool use24HourClock = true;
+byte timeZoneIndex = 0;
+
+enum HardwareButtonId {
+  HW_BTN_RESET = 0,
+  HW_BTN_SELECT = 1,
+  HW_BTN_UP = 2,
+  HW_BTN_DOWN = 3,
+  HW_BTN_COUNT = 4
+};
+
+struct HardwareButtonState {
+  int8_t pin;
+  bool lastRawPressed;
+  bool stablePressed;
+  unsigned long lastChange;
+  unsigned long pressedAt;
+  unsigned long lastRepeat;
+  bool longReported;
+};
+
+HardwareButtonState hardwareButtons[HW_BTN_COUNT] = {
+  {HW_BUTTON_RESET_PIN, false, false, 0, 0, 0, false},
+  {HW_BUTTON_SELECT_PIN, false, false, 0, 0, 0, false},
+  {HW_BUTTON_UP_PIN, false, false, 0, 0, 0, false},
+  {HW_BUTTON_DOWN_PIN, false, false, 0, 0, 0, false}
+};
+
+bool hardwareResetShort = false;
+bool hardwareResetLong = false;
+bool hardwareSelectShort = false;
+bool hardwareUpPressed = false;
+bool hardwareDownPressed = false;
+
+enum SetupMenuScreen {
+  MENU_ROOT = 0,
+  MENU_WIFI = 1,
+  MENU_TIME = 2,
+  MENU_MANUAL_TIME = 3,
+  MENU_TIME_ZONE = 4,
+  MENU_MESSAGE = 5
+};
+
+byte modeBeforeMenu = CLOCK;
+byte setupMenuScreen = MENU_ROOT;
+byte setupMenuCursor = 0;
+byte setupMenuMessageReturnScreen = MENU_ROOT;
+byte manualHour = 0;
+byte manualMinute = 0;
+bool manualEditingHour = true;
+String setupMenuMessage = "";
+unsigned long setupMenuMessageUntil = 0;
+unsigned long pendingRestartAt = 0;
+char menuTextBuffer[64];
+
+void setCurrentMode(byte mode);
+void setCurrentMode(byte mode, bool persistState);
+uint32_t getTime();
+void sendNTPpacket(IPAddress& address);
 
 //[Section] - Read and write to EEPROM
 byte readEEPROM(uint address){
@@ -96,6 +200,8 @@ void saveCurrentState(){
   EEPROM.write(4, pixelBoard.ledFill_B);
   EEPROM.write(5, pixelArt.displaySpeed);
   EEPROM.write(6, pixelArt.currentFolderPointer);
+  EEPROM.write(EEPROM_CLOCK_FORMAT_ADDRESS, use24HourClock ? 1 : 0);
+  EEPROM.write(EEPROM_TIME_ZONE_ADDRESS, timeZoneIndex);
 
   EEPROM.commit();
 }
@@ -118,6 +224,13 @@ void restorePreviousState(){
   
   pixelArt.displaySpeed = readEEPROM(5);
   pixelArt.currentFolderPointer = readEEPROM(6);
+  byte storedClockFormat = readEEPROM(EEPROM_CLOCK_FORMAT_ADDRESS);
+  use24HourClock = storedClockFormat == 0 ? false : true;
+  pixelClock.setUse24Hour(use24HourClock);
+  timeZoneIndex = readEEPROM(EEPROM_TIME_ZONE_ADDRESS);
+  if(timeZoneIndex >= TIME_ZONE_COUNT){
+    timeZoneIndex = 0;
+  }
   setCurrentMode(mode);
 }
 
@@ -130,6 +243,10 @@ void setNextMode(){
 	setCurrentMode(mode);
 }
 void setCurrentMode(byte mode){
+  setCurrentMode(mode, true);
+}
+
+void setCurrentMode(byte mode, bool persistState){
 	currentMode = mode;
 	if(mode == PIXEL_ART_TRAVERSE){	
 		pixelArt.startTraverseFolders();
@@ -144,7 +261,9 @@ void setCurrentMode(byte mode){
 	}else if (mode == GAME_ARKANOID){
     gameArkanoid.reset();
 	}
-	saveCurrentState();
+  if(persistState && mode != SETUP_MENU){
+	  saveCurrentState();
+  }
 }
 //[Section] Handle function for WebSocket ( webSocketEvent() )/ WebServer
 void handleTraverse(){
@@ -380,6 +499,435 @@ void setBrightness(byte level){
   strip.show();  
 }
 
+bool readHardwareButtonRaw(byte index){
+  if(hardwareButtons[index].pin < 0){
+    return false;
+  }
+  return digitalRead(hardwareButtons[index].pin) == LOW;
+}
+
+void setupHardwareButtons(){
+  for(byte i = 0; i < HW_BTN_COUNT; ++i){
+    if(hardwareButtons[i].pin >= 0){
+      pinMode(hardwareButtons[i].pin, INPUT_PULLUP);
+      hardwareButtons[i].lastRawPressed = readHardwareButtonRaw(i);
+      hardwareButtons[i].stablePressed = hardwareButtons[i].lastRawPressed;
+      hardwareButtons[i].lastChange = millis();
+    }
+  }
+}
+
+void clearHardwareButtonEvents(){
+  hardwareResetShort = false;
+  hardwareResetLong = false;
+  hardwareSelectShort = false;
+  hardwareUpPressed = false;
+  hardwareDownPressed = false;
+}
+
+void updateHardwareButton(byte index, unsigned long currentMillis){
+  HardwareButtonState* button = &hardwareButtons[index];
+  bool rawPressed = readHardwareButtonRaw(index);
+
+  if(rawPressed != button->lastRawPressed){
+    button->lastRawPressed = rawPressed;
+    button->lastChange = currentMillis;
+  }
+
+  if(currentMillis - button->lastChange < HW_BUTTON_DEBOUNCE_MS){
+    return;
+  }
+
+  if(rawPressed != button->stablePressed){
+    button->stablePressed = rawPressed;
+    if(rawPressed){
+      button->pressedAt = currentMillis;
+      button->lastRepeat = currentMillis;
+      button->longReported = false;
+    }else if(!button->longReported){
+      if(index == HW_BTN_RESET){
+        hardwareResetShort = true;
+      }else if(index == HW_BTN_SELECT){
+        hardwareSelectShort = true;
+      }else if(index == HW_BTN_UP){
+        hardwareUpPressed = true;
+      }else if(index == HW_BTN_DOWN){
+        hardwareDownPressed = true;
+      }
+    }
+  }
+
+  if(!button->stablePressed){
+    return;
+  }
+
+  if(index == HW_BTN_RESET && !button->longReported && currentMillis - button->pressedAt >= HW_RESET_HOLD_MS){
+    button->longReported = true;
+    hardwareResetLong = true;
+  }else if((index == HW_BTN_UP || index == HW_BTN_DOWN) &&
+      currentMillis - button->pressedAt >= HW_BUTTON_REPEAT_DELAY_MS &&
+      currentMillis - button->lastRepeat >= HW_BUTTON_REPEAT_MS){
+    button->lastRepeat = currentMillis;
+    if(index == HW_BTN_UP){
+      hardwareUpPressed = true;
+    }else{
+      hardwareDownPressed = true;
+    }
+  }
+}
+
+void readHardwareButtons(unsigned long currentMillis){
+  clearHardwareButtonEvents();
+  for(byte i = 0; i < HW_BTN_COUNT; ++i){
+    updateHardwareButton(i, currentMillis);
+  }
+}
+
+void showMenuMessage(const String& message, byte returnScreen, unsigned long currentMillis){
+  setupMenuMessage = message;
+  setupMenuMessageReturnScreen = returnScreen;
+  setupMenuMessageUntil = currentMillis + 1800;
+  setupMenuScreen = MENU_MESSAGE;
+  pixelMenu.reset();
+}
+
+void enterSetupMenu(){
+  modeBeforeMenu = currentMode;
+  if(modeBeforeMenu == SETUP_MENU){
+    modeBeforeMenu = CLOCK;
+  }
+  currentMode = SETUP_MENU;
+  setupMenuScreen = MENU_ROOT;
+  setupMenuCursor = 0;
+  pendingRestartAt = 0;
+  pixelMenu.reset();
+  pixelBoardController.clearStickyBtns();
+}
+
+void exitSetupMenu(){
+  byte mode = modeBeforeMenu;
+  if(mode < PIXEL_ART_TRAVERSE || mode > TOTAL_MODES){
+    mode = CLOCK;
+  }
+  setCurrentMode(mode, false);
+  pixelMenu.reset();
+}
+
+byte getMenuItemCount(){
+  if(setupMenuScreen == MENU_WIFI){
+    return 4;
+  }
+  if(setupMenuScreen == MENU_TIME){
+    return 5;
+  }
+  return 3;
+}
+
+String getCurrentMenuLabel(){
+  if(setupMenuScreen == MENU_ROOT){
+    if(setupMenuCursor == 0) return "WIFI";
+    if(setupMenuCursor == 1) return "TIME";
+    return "EXIT";
+  }
+
+  if(setupMenuScreen == MENU_WIFI){
+    if(setupMenuCursor == 0) return "SHOW IP";
+    if(setupMenuCursor == 1) return "SHOW SSID";
+    if(setupMenuCursor == 2) return "CONNECT SSID";
+    return "BACK";
+  }
+
+  if(setupMenuScreen == MENU_TIME){
+    if(setupMenuCursor == 0) return "MANUAL TIME";
+    if(setupMenuCursor == 1) return use24HourClock ? "24 HOUR ON" : "12 HOUR ON";
+    if(setupMenuCursor == 2) return "USE RTC";
+    if(setupMenuCursor == 3){
+      snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s %+d", TIME_ZONES[timeZoneIndex].code, TIME_ZONES[timeZoneIndex].offsetHours);
+      return String(menuTextBuffer);
+    }
+    return "BACK";
+  }
+
+  return "";
+}
+
+void moveMenuCursor(int8_t direction){
+  byte itemCount = getMenuItemCount();
+  if(direction > 0){
+    setupMenuCursor++;
+    if(setupMenuCursor >= itemCount){
+      setupMenuCursor = 0;
+    }
+  }else{
+    if(setupMenuCursor == 0){
+      setupMenuCursor = itemCount - 1;
+    }else{
+      setupMenuCursor--;
+    }
+  }
+  pixelMenu.reset();
+}
+
+void startManualTime(){
+  RtcDateTime now = Rtc.GetDateTime();
+  manualHour = now.Hour();
+  manualMinute = now.Minute();
+  manualEditingHour = true;
+  setupMenuScreen = MENU_MANUAL_TIME;
+  pixelMenu.reset();
+}
+
+void saveManualTime(){
+  RtcDateTime now = Rtc.GetDateTime();
+  setRtcDateTime(now.Year(), now.Month(), now.Day(), manualHour, manualMinute, 0);
+}
+
+void adjustManualTime(int8_t direction){
+  if(manualEditingHour){
+    manualHour = (manualHour + 24 + direction) % 24;
+  }else{
+    manualMinute = (manualMinute + 60 + direction) % 60;
+  }
+  pixelMenu.reset();
+}
+
+void selectManualTime(unsigned long currentMillis){
+  if(manualEditingHour){
+    manualEditingHour = false;
+  }else{
+    saveManualTime();
+    manualEditingHour = true;
+    showMenuMessage("TIME SAVED", MENU_MANUAL_TIME, currentMillis);
+  }
+  pixelMenu.reset();
+}
+
+void showManualTime(unsigned long currentMillis){
+  bool blinkOff = ((currentMillis / 400) % 2) == 0;
+  if(manualEditingHour && blinkOff){
+    snprintf(menuTextBuffer, sizeof(menuTextBuffer), "__%02d", manualMinute);
+  }else if(!manualEditingHour && blinkOff){
+    snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%02d__", manualHour);
+  }else{
+    snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%02d%02d", manualHour, manualMinute);
+  }
+  pixelMenu.showText(String(menuTextBuffer), currentMillis, ORANGE);
+}
+
+void adjustTimeZone(int8_t direction){
+  if(direction > 0){
+    timeZoneIndex++;
+    if(timeZoneIndex >= TIME_ZONE_COUNT){
+      timeZoneIndex = 0;
+    }
+  }else{
+    if(timeZoneIndex == 0){
+      timeZoneIndex = TIME_ZONE_COUNT - 1;
+    }else{
+      timeZoneIndex--;
+    }
+  }
+  saveCurrentState();
+  pixelMenu.reset();
+}
+
+void showTimeZone(unsigned long currentMillis){
+  snprintf(menuTextBuffer, sizeof(menuTextBuffer), "%s %+d", TIME_ZONES[timeZoneIndex].code, TIME_ZONES[timeZoneIndex].offsetHours);
+  pixelMenu.showText(String(menuTextBuffer), currentMillis, GREEN);
+}
+
+void setRtcTimeFromUnix(uint32_t unixTime){
+  long secondsOfDay = (long)(unixTime % 86400UL) + ((long)TIME_ZONES[timeZoneIndex].offsetHours * 3600L);
+  while(secondsOfDay < 0){
+    secondsOfDay += 86400L;
+  }
+  while(secondsOfDay >= 86400L){
+    secondsOfDay -= 86400L;
+  }
+
+  RtcDateTime now = Rtc.GetDateTime();
+  setRtcDateTime(
+    now.Year(),
+    now.Month(),
+    now.Day(),
+    secondsOfDay / 3600,
+    (secondsOfDay / 60) % 60,
+    secondsOfDay % 60
+  );
+}
+
+bool syncRtcWithNtp(unsigned long currentMillis){
+  if(WiFi.status() != WL_CONNECTED){
+    return false;
+  }
+
+  WiFi.hostByName(NTPServerName, timeServerIP);
+  sendNTPpacket(timeServerIP);
+  unsigned long startWait = currentMillis;
+  while(millis() - startWait < 2000){
+    ArduinoOTA.handle();
+    webSocket.loop();
+    server.handleClient();
+    uint32_t unixTime = getTime();
+    if(unixTime){
+      setRtcTimeFromUnix(unixTime);
+      return true;
+    }
+    delay(10);
+  }
+  return false;
+}
+
+void selectRootMenu(){
+  if(setupMenuCursor == 0){
+    setupMenuScreen = MENU_WIFI;
+    setupMenuCursor = 0;
+  }else if(setupMenuCursor == 1){
+    setupMenuScreen = MENU_TIME;
+    setupMenuCursor = 0;
+  }else{
+    exitSetupMenu();
+  }
+  pixelMenu.reset();
+}
+
+void selectWifiMenu(unsigned long currentMillis){
+  if(setupMenuCursor == 0){
+    showMenuMessage(WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "NO WIFI", MENU_WIFI, currentMillis);
+  }else if(setupMenuCursor == 1){
+    String ssid = WiFi.SSID();
+    showMenuMessage((WiFi.status() == WL_CONNECTED && ssid.length() > 0) ? ssid : "NO SSID", MENU_WIFI, currentMillis);
+  }else if(setupMenuCursor == 2){
+    wifiManager.resetSettings();
+    pendingRestartAt = currentMillis + 2200;
+    showMenuMessage("WIFI SETUP RESTART", MENU_WIFI, currentMillis);
+  }else{
+    setupMenuScreen = MENU_ROOT;
+    setupMenuCursor = 0;
+    pixelMenu.reset();
+  }
+}
+
+void selectTimeMenu(unsigned long currentMillis){
+  if(setupMenuCursor == 0){
+    startManualTime();
+  }else if(setupMenuCursor == 1){
+    use24HourClock = !use24HourClock;
+    pixelClock.setUse24Hour(use24HourClock);
+    saveCurrentState();
+    showMenuMessage(use24HourClock ? "24 HOUR ON" : "12 HOUR ON", MENU_TIME, currentMillis);
+  }else if(setupMenuCursor == 2){
+    if(WiFi.status() != WL_CONNECTED){
+      showMenuMessage("SETUP WIFI FIRST", MENU_TIME, currentMillis);
+    }else if(syncRtcWithNtp(currentMillis)){
+      snprintf(menuTextBuffer, sizeof(menuTextBuffer), "RTC %s %+d", TIME_ZONES[timeZoneIndex].code, TIME_ZONES[timeZoneIndex].offsetHours);
+      showMenuMessage(String(menuTextBuffer), MENU_TIME, millis());
+    }else{
+      showMenuMessage("NTP FAILED", MENU_TIME, millis());
+    }
+  }else if(setupMenuCursor == 3){
+    setupMenuScreen = MENU_TIME_ZONE;
+    pixelMenu.reset();
+  }else{
+    setupMenuScreen = MENU_ROOT;
+    setupMenuCursor = 0;
+    pixelMenu.reset();
+  }
+}
+
+void selectSetupMenu(unsigned long currentMillis){
+  if(setupMenuScreen == MENU_ROOT){
+    selectRootMenu();
+  }else if(setupMenuScreen == MENU_WIFI){
+    selectWifiMenu(currentMillis);
+  }else if(setupMenuScreen == MENU_TIME){
+    selectTimeMenu(currentMillis);
+  }else if(setupMenuScreen == MENU_MANUAL_TIME){
+    selectManualTime(currentMillis);
+  }else if(setupMenuScreen == MENU_TIME_ZONE){
+    setupMenuScreen = MENU_TIME;
+    setupMenuCursor = 3;
+    saveCurrentState();
+    showMenuMessage("TZ SAVED", MENU_TIME, currentMillis);
+  }
+}
+
+void handleSetupMenuBack(){
+  if(setupMenuScreen == MENU_ROOT){
+    exitSetupMenu();
+  }else if(setupMenuScreen == MENU_WIFI || setupMenuScreen == MENU_TIME){
+    setupMenuScreen = MENU_ROOT;
+    setupMenuCursor = 0;
+  }else if(setupMenuScreen == MENU_MANUAL_TIME || setupMenuScreen == MENU_TIME_ZONE){
+    byte previousScreen = setupMenuScreen;
+    setupMenuScreen = MENU_TIME;
+    setupMenuCursor = previousScreen == MENU_TIME_ZONE ? 3 : 0;
+  }else if(setupMenuScreen == MENU_MESSAGE){
+    setupMenuScreen = setupMenuMessageReturnScreen;
+  }
+  pixelMenu.reset();
+}
+
+void handleSetupMenuButtons(unsigned long currentMillis){
+  if(hardwareSelectShort){
+    selectSetupMenu(currentMillis);
+  }
+
+  if(hardwareUpPressed){
+    if(setupMenuScreen == MENU_MANUAL_TIME){
+      adjustManualTime(1);
+    }else if(setupMenuScreen == MENU_TIME_ZONE){
+      adjustTimeZone(1);
+    }else if(setupMenuScreen != MENU_MESSAGE){
+      moveMenuCursor(-1);
+    }
+  }
+
+  if(hardwareDownPressed){
+    if(setupMenuScreen == MENU_MANUAL_TIME){
+      adjustManualTime(-1);
+    }else if(setupMenuScreen == MENU_TIME_ZONE){
+      adjustTimeZone(-1);
+    }else if(setupMenuScreen != MENU_MESSAGE){
+      moveMenuCursor(1);
+    }
+  }
+}
+
+void updateSetupMenu(unsigned long currentMillis){
+  if(pendingRestartAt > 0 && currentMillis >= pendingRestartAt){
+    ESP.restart();
+  }
+
+  if(setupMenuScreen == MENU_MESSAGE){
+    pixelMenu.showText(setupMenuMessage, currentMillis, YELLOW);
+    if(currentMillis >= setupMenuMessageUntil){
+      setupMenuScreen = setupMenuMessageReturnScreen;
+      pixelMenu.reset();
+    }
+    return;
+  }
+
+  if(setupMenuScreen == MENU_MANUAL_TIME){
+    showManualTime(currentMillis);
+    return;
+  }
+
+  if(setupMenuScreen == MENU_TIME_ZONE){
+    showTimeZone(currentMillis);
+    return;
+  }
+
+  pixelMenu.showText(getCurrentMenuLabel(), currentMillis, CYAN);
+}
+
+void triggerHardwareReset(unsigned long currentMillis){
+  pixelMenu.showText("RESET", currentMillis, RED);
+  saveCurrentState();
+  delay(500);
+  ESP.restart();
+}
+
 unsigned long loopTimerTemp = 0;
 unsigned long ntpTimer = 0;
 
@@ -397,8 +945,27 @@ void loop() {
   server.handleClient();
   
   loopTimerTemp = millis();
+
+  readHardwareButtons(loopTimerTemp);
+  if(hardwareResetLong){
+    triggerHardwareReset(loopTimerTemp);
+    return;
+  }
+
+  if(hardwareResetShort){
+    if(currentMode == SETUP_MENU){
+      handleSetupMenuBack();
+    }else{
+      enterSetupMenu();
+    }
+  }
+
+  if(currentMode == SETUP_MENU){
+    handleSetupMenuButtons(loopTimerTemp);
+    updateSetupMenu(loopTimerTemp);
+  }else{
  
-   if(pixelBoardController.getBtnStatus(BTNS) == 1 &&
+  if(pixelBoardController.getBtnStatus(BTNS) == 1 &&
     pixelBoardController.getBtnStatus(BTNA) == 1 ){
 	
   
@@ -439,6 +1006,7 @@ void loop() {
     pixelBoard.update(loopTimerTemp); //Fill Board
   }else if (currentMode == CLOCK){
     pixelClock.update(loopTimerTemp); //Show Clock
+  }
   }
   if(loopTimerTemp - ntpTimer > 300000){
 	ntpTimer = loopTimerTemp;
@@ -644,6 +1212,8 @@ void sendNTPpacket(IPAddress& address) {
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
+  pixelBoardController.begin();
+  setupHardwareButtons();
   
   sdReady = setupSDCard();
   if(sdReady){
