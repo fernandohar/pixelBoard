@@ -3,6 +3,30 @@
 ESP8266 firmware for a 16x16 NeoPixel matrix with SD-card animations, a DS3231
 RTC clock, web control, OTA updates, games, and a hardware setup menu.
 
+## NTP server configuration
+
+The firmware defaults to the public NTP pool:
+
+```text
+pool.ntp.org
+```
+
+You can override it from the SD card by creating this file:
+
+```text
+/ntpserver.txt
+```
+
+The first non-empty, non-comment line is used as the NTP hostname or IP address:
+
+```text
+# Optional SD-card NTP override
+time.google.com
+```
+
+If the file is missing, empty, or cannot be opened, the firmware falls back to
+`pool.ntp.org`.
+
 ## Hardware wiring
 
 The firmware is written for an ESP8266 Dev board driving a 5V NeoPixel matrix.

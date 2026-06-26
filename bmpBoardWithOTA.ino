@@ -1,6 +1,7 @@
 //Fernando Har - 20190424
 #include <SPI.h>
 #include <EEPROM.h>
+#include <string.h>
 #include <Adafruit_NeoPixel.h>
 #include "SdFat.h"
 //WifiManager-OTA
@@ -82,7 +83,10 @@ PixelMenu pixelMenu = PixelMenu(&strip);
 WiFiUDP UDP;
 
 IPAddress timeServerIP;
-const char* NTPServerName = "CORPQEHDC02.corp.ha.org.hk";
+#define NTP_SERVER_NAME_MAX_LENGTH 63
+const char* DEFAULT_NTP_SERVER_NAME = "pool.ntp.org";
+const char* NTP_SERVER_CONFIG_FILE = "/ntpserver.txt";
+char NTPServerName[NTP_SERVER_NAME_MAX_LENGTH + 1] = "pool.ntp.org";
 const int NTP_PACKET_SIZE = 48;  // NTP time stamp is in the first 48 bytes of the message
 byte NTPBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
 
@@ -342,6 +346,83 @@ void setupNeoPixelBoard(){
 
 bool setupSDCard(){
 	return sd.begin(SD_CS, SPI_FULL_SPEED);
+}
+
+bool isNtpServerNameSafeChar(char c){
+  return (c >= 'A' && c <= 'Z') ||
+    (c >= 'a' && c <= 'z') ||
+    (c >= '0' && c <= '9') ||
+    c == '.' || c == '-' || c == '_' || c == ':';
+}
+
+bool loadNtpServerFromSD(){
+  strncpy(NTPServerName, DEFAULT_NTP_SERVER_NAME, NTP_SERVER_NAME_MAX_LENGTH);
+  NTPServerName[NTP_SERVER_NAME_MAX_LENGTH] = '\0';
+
+  if(!sdReady || !sd.exists(NTP_SERVER_CONFIG_FILE)){
+    Serial.printf("NTP server: %s (default)\n", NTPServerName);
+    return false;
+  }
+
+  sdfat::File configFile = sd.open(NTP_SERVER_CONFIG_FILE, O_READ);
+  if(!configFile){
+    Serial.printf("NTP server: %s (default, config open failed)\n", NTPServerName);
+    return false;
+  }
+
+  char line[NTP_SERVER_NAME_MAX_LENGTH + 1] = {0};
+  byte lineLength = 0;
+  bool hasValue = false;
+  bool skipLine = false;
+  int input;
+
+  while((input = configFile.read()) >= 0){
+    char c = (char)input;
+    if(c == '\r'){
+      continue;
+    }
+    if(c == '\n'){
+      line[lineLength] = '\0';
+      if(lineLength > 0){
+        hasValue = true;
+        break;
+      }
+      lineLength = 0;
+      line[0] = '\0';
+      skipLine = false;
+      continue;
+    }
+    if(skipLine){
+      continue;
+    }
+    if(c == '#'){
+      skipLine = true;
+      continue;
+    }
+    if(lineLength == 0 && (c == ' ' || c == '\t')){
+      continue;
+    }
+    if(lineLength < NTP_SERVER_NAME_MAX_LENGTH && isNtpServerNameSafeChar(c)){
+      line[lineLength++] = c;
+    }
+  }
+
+  if(!hasValue && lineLength > 0){
+    line[lineLength] = '\0';
+    hasValue = true;
+  }
+
+  configFile.close();
+
+  if(!hasValue){
+    Serial.printf("NTP server: %s (default, config empty)\n", NTPServerName);
+    return false;
+  }
+
+  strncpy(NTPServerName, line, NTP_SERVER_NAME_MAX_LENGTH);
+  NTPServerName[NTP_SERVER_NAME_MAX_LENGTH] = '\0';
+  Serial.printf("NTP server: %s (from SD %s)\n", NTPServerName, NTP_SERVER_CONFIG_FILE);
+  return true;
 }
 
 //[Section] RTC (Real time clock) module
@@ -1240,6 +1321,7 @@ void setup() {
     Serial.println("[SD CARD] ERROR");
     
   }
+  loadNtpServerFromSD();
   EEPROM.begin(512);
   restorePreviousState(); 
 
