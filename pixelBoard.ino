@@ -5,17 +5,26 @@
 #include <Adafruit_NeoPixel.h>
 #include "SdFat.h"
 #include "sdios.h"
-//WifiManager-OTA
-//#include <ESP8266WiFi.h>   //https://github.com/esp8266/Arduino
-#include <DNSServer.h>
-#include <ESP8266mDNS.h>
-#include <ESP8266WebServer.h>
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WebServer.h>
 #include <WebSocketsServer.h> //https://github.com/Links2004/arduinoWebSockets
 #include <WiFiManager.h>   //https://github.com/tzapu/WiFiManager
 #include <WiFiUdp.h>
-#include "ArduinoOTA.h"    //https://github.com/esp8266/Arduino/tree/master/libraries/ArduinoOTA
+#include <ArduinoOTA.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 
-#define SD_CS 15           //for SD card reader
+#define NEOPIXEL_PIN 21
+#define RTC_SDA_PIN 8
+#define RTC_SCL_PIN 9
+
+#define SD_CS 10
+#define SD_SCK 12
+#define SD_MISO 13
+#define SD_MOSI 11
 
 #if HAS_SDIO_CLASS
   #define SD_CONFIG SdioConfig(FIFO_SDIO)
@@ -50,7 +59,8 @@ RtcDS3231<TwoWire> Rtc(Wire);
 #define GAME_OF_LIFE 7
 #define GAME_ARKANOID 8
 #define MOOD_LIGHT 9
-#define SETUP_MENU 10
+#define BLE_DISPLAY 10
+#define SETUP_MENU 11
 #define TOTAL_MODES 9
 
 //PIXEL FRAME 
@@ -64,7 +74,7 @@ bool      sdReady = false;
 
 //LED STRIP 
 byte brightness;
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(BOARDSIZE, 2, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(BOARDSIZE, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 //WiFiManager
 WiFiManager wifiManager;
@@ -72,7 +82,7 @@ bool    reconnectWifiFlag;
 bool    needRestart = false;
 
 //Web Server
-ESP8266WebServer  server(80);//Web server object. Will be listening in port 80 (default for HTTP)
+WebServer  server(80);//Web server object. Will be listening in port 80 (default for HTTP)
 //Web Socket Server
 WebSocketsServer webSocket = WebSocketsServer(81);
 
@@ -111,6 +121,20 @@ unsigned long ntpTimer = 0;
 unsigned long ntpRequestSentAt = 0;
 bool ntpRequestPending = false;
 
+#define BLE_SERVICE_UUID "7d8f0001-6f8a-4a5a-9d6b-40f520dc0001"
+#define BLE_COMMAND_UUID "7d8f0002-6f8a-4a5a-9d6b-40f520dc0001"
+#define BLE_STATUS_UUID  "7d8f0003-6f8a-4a5a-9d6b-40f520dc0001"
+#define BLE_WIFI_CONNECT_TIMEOUT_MS 20000UL
+BLECharacteristic* bleStatusCharacteristic = NULL;
+bool bleClientConnected = false;
+bool bleWifiPending = false;
+bool bleWifiConnecting = false;
+unsigned long bleWifiStartedAt = 0;
+String bleWifiSsid = "";
+String bleWifiPassword = "";
+String bleDisplayText = "";
+bool bleDisplayTextActive = false;
+
 #define EEPROM_CLOCK_FORMAT_ADDRESS 7
 #define EEPROM_TIME_ZONE_ADDRESS 8
 #define EEPROM_WIFI_CLOCK_ADDRESS 9
@@ -122,16 +146,16 @@ bool ntpRequestPending = false;
 // Set these to GPIO numbers that are free on your board before flashing.
 // Use buttons wired to GND; the firmware enables INPUT_PULLUP for each pin.
 #ifndef HW_BUTTON_RESET_PIN
-#define HW_BUTTON_RESET_PIN -1
+#define HW_BUTTON_RESET_PIN 4
 #endif
 #ifndef HW_BUTTON_SELECT_PIN
-#define HW_BUTTON_SELECT_PIN -1
+#define HW_BUTTON_SELECT_PIN 5
 #endif
 #ifndef HW_BUTTON_UP_PIN
-#define HW_BUTTON_UP_PIN -1
+#define HW_BUTTON_UP_PIN 6
 #endif
 #ifndef HW_BUTTON_DOWN_PIN
-#define HW_BUTTON_DOWN_PIN -1
+#define HW_BUTTON_DOWN_PIN 7
 #endif
 
 #define HW_BUTTON_DEBOUNCE_MS 35
@@ -225,6 +249,10 @@ uint32_t getTime();
 void sendNTPpacket(IPAddress& address);
 void setRtcTimeFromUnix(uint32_t unixTime);
 void scheduleNtpSyncNow();
+void setupBLE();
+void processBleTasks(unsigned long currentMillis);
+void updateBleDisplay(unsigned long currentMillis);
+void handleBleCommand(String command);
 void enterSetupMenu();
 void handleSetupMenuBack();
 void handleSetupMenuButtons(unsigned long currentMillis);
@@ -396,6 +424,7 @@ void setupNeoPixelBoard(){
 }
 
 bool setupSDCard(){
+  SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
 	return sd.begin(SD_CONFIG);
 }
 
@@ -785,6 +814,7 @@ void setRtcDateTime(const RtcDateTime& dateTime){
 //--------RTC SETUP ------------
 void setupRTC() {
   Serial.println("[Begin] RTC setup ");  
+  Wire.begin(RTC_SDA_PIN, RTC_SCL_PIN);
   Rtc.Begin();
   
   RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
@@ -896,7 +926,8 @@ void handleFileUpload(){ // upload a new file to the Filing system
 
 //[Section] Wifi Management
 void formatDeviceName(char* deviceName, size_t deviceNameSize){
-  snprintf(deviceName, deviceNameSize, "pixelboard_%06X", ESP.getChipId());
+  uint32_t chipId = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFF);
+  snprintf(deviceName, deviceNameSize, "pixelboard_%06X", chipId);
 }
 
 String getWifiSetupInstruction(){
@@ -1049,6 +1080,229 @@ void readHardwareButtons(unsigned long currentMillis){
   }
 }
 
+byte hexValue(char c){
+  if(c >= '0' && c <= '9') return c - '0';
+  if(c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if(c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return 0;
+}
+
+byte parseHexByte(const String& value, int offset){
+  return (hexValue(value.charAt(offset)) << 4) | hexValue(value.charAt(offset + 1));
+}
+
+uint32_t parseHexColor(const String& value, int offset){
+  byte red = parseHexByte(value, offset);
+  byte green = parseHexByte(value, offset + 2);
+  byte blue = parseHexByte(value, offset + 4);
+  return strip.Color(red, green, blue);
+}
+
+void notifyBleStatus(const String& status){
+  Serial.println(status);
+  if(bleStatusCharacteristic != NULL && bleClientConnected){
+    bleStatusCharacteristic->setValue(status.c_str());
+    bleStatusCharacteristic->notify();
+  }
+}
+
+void setBleDisplayMode(){
+  currentMode = BLE_DISPLAY;
+  bleDisplayTextActive = false;
+}
+
+void handleBleWifiCommand(const String& payload){
+  int separator = payload.indexOf('|');
+  if(separator < 0){
+    separator = payload.indexOf(',');
+  }
+  if(separator <= 0){
+    notifyBleStatus("ERR WIFI USE WIFI:ssid|password");
+    return;
+  }
+
+  bleWifiSsid = payload.substring(0, separator);
+  bleWifiPassword = payload.substring(separator + 1);
+  bleWifiPending = true;
+  bleWifiConnecting = false;
+  notifyBleStatus("WIFI CONNECT QUEUED");
+}
+
+void handleBlePixelCommand(const String& payload){
+  int firstComma = payload.indexOf(',');
+  int secondComma = payload.indexOf(',', firstComma + 1);
+  if(firstComma < 0 || secondComma < 0 || payload.length() < secondComma + 7){
+    notifyBleStatus("ERR PIX USE PIX:x,y,RRGGBB");
+    return;
+  }
+
+  int x = payload.substring(0, firstComma).toInt();
+  int y = payload.substring(firstComma + 1, secondComma).toInt();
+  if(x < 0 || x >= BOARDWIDTH || y < 0 || y >= BOARDHEIGHT){
+    notifyBleStatus("ERR PIX RANGE");
+    return;
+  }
+
+  setBleDisplayMode();
+  strip.setPixelColor(pixelMenu.getPixelIndex((byte)x, (byte)y), parseHexColor(payload, secondComma + 1));
+  strip.show();
+  notifyBleStatus("OK PIX");
+}
+
+void handleBleRowCommand(const String& payload){
+  int separator = payload.indexOf(':');
+  if(separator < 0){
+    notifyBleStatus("ERR ROW USE ROW:y:RGBHEX");
+    return;
+  }
+
+  int y = payload.substring(0, separator).toInt();
+  String rowData = payload.substring(separator + 1);
+  if(y < 0 || y >= BOARDHEIGHT || rowData.length() < BOARDWIDTH * 6){
+    notifyBleStatus("ERR ROW RANGE");
+    return;
+  }
+
+  setBleDisplayMode();
+  for(byte x = 0; x < BOARDWIDTH; ++x){
+    strip.setPixelColor(pixelMenu.getPixelIndex(x, (byte)y), parseHexColor(rowData, x * 6));
+  }
+  strip.show();
+  notifyBleStatus("OK ROW");
+}
+
+void handleBleFrameCommand(const String& payload){
+  if(payload.length() < BOARDSIZE * 6){
+    notifyBleStatus("ERR FRAME NEED 1536 HEX");
+    return;
+  }
+
+  setBleDisplayMode();
+  for(byte y = 0; y < BOARDHEIGHT; ++y){
+    for(byte x = 0; x < BOARDWIDTH; ++x){
+      int offset = ((y * BOARDWIDTH) + x) * 6;
+      strip.setPixelColor(pixelMenu.getPixelIndex(x, y), parseHexColor(payload, offset));
+    }
+  }
+  strip.show();
+  notifyBleStatus("OK FRAME");
+}
+
+void handleBleCommand(String command){
+  command.trim();
+  if(command.length() == 0){
+    return;
+  }
+
+  if(command.startsWith("WIFI:")){
+    handleBleWifiCommand(command.substring(5));
+  }else if(command.startsWith("TEXT:")){
+    bleDisplayText = command.substring(5);
+    bleDisplayTextActive = true;
+    currentMode = BLE_DISPLAY;
+    pixelMenu.reset();
+    notifyBleStatus("OK TEXT");
+  }else if(command.equals("CLEAR")){
+    setBleDisplayMode();
+    for(int i = 0; i < BOARDSIZE; ++i){
+      strip.setPixelColor(i, BLACK);
+    }
+    strip.show();
+    notifyBleStatus("OK CLEAR");
+  }else if(command.startsWith("PIX:")){
+    handleBlePixelCommand(command.substring(4));
+  }else if(command.startsWith("ROW:")){
+    handleBleRowCommand(command.substring(4));
+  }else if(command.startsWith("FRAME:")){
+    handleBleFrameCommand(command.substring(6));
+  }else if(command.startsWith("BRIGHT:")){
+    setBrightness((byte)command.substring(7).toInt());
+    notifyBleStatus("OK BRIGHT");
+  }else{
+    notifyBleStatus("ERR UNKNOWN COMMAND");
+  }
+}
+
+class PixelBoardBleServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* server) {
+    bleClientConnected = true;
+  }
+
+  void onDisconnect(BLEServer* server) {
+    bleClientConnected = false;
+    BLEDevice::startAdvertising();
+  }
+};
+
+class PixelBoardBleCommandCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* characteristic) {
+    String command = characteristic->getValue().c_str();
+    handleBleCommand(command);
+  }
+};
+
+void setupBLE(){
+  char deviceName[30] = {0};
+  formatDeviceName(deviceName, sizeof(deviceName));
+  BLEDevice::init(deviceName);
+
+  BLEServer* bleServer = BLEDevice::createServer();
+  bleServer->setCallbacks(new PixelBoardBleServerCallbacks());
+  BLEService* service = bleServer->createService(BLE_SERVICE_UUID);
+
+  BLECharacteristic* commandCharacteristic = service->createCharacteristic(
+    BLE_COMMAND_UUID,
+    BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR
+  );
+  commandCharacteristic->setCallbacks(new PixelBoardBleCommandCallbacks());
+
+  bleStatusCharacteristic = service->createCharacteristic(
+    BLE_STATUS_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  bleStatusCharacteristic->addDescriptor(new BLE2902());
+  bleStatusCharacteristic->setValue("PIXELBOARD READY");
+
+  service->start();
+  BLEAdvertising* advertising = BLEDevice::getAdvertising();
+  advertising->addServiceUUID(BLE_SERVICE_UUID);
+  advertising->setScanResponse(true);
+  BLEDevice::startAdvertising();
+  Serial.println("BLE control service started");
+}
+
+void processBleTasks(unsigned long currentMillis){
+  if(bleWifiPending && !bleWifiConnecting){
+    bleWifiConnecting = true;
+    bleWifiStartedAt = currentMillis;
+    WiFi.mode(WIFI_STA);
+    WiFi.persistent(true);
+    WiFi.begin(bleWifiSsid.c_str(), bleWifiPassword.c_str());
+    notifyBleStatus("WIFI CONNECTING");
+  }
+
+  if(bleWifiConnecting){
+    if(WiFi.status() == WL_CONNECTED){
+      bleWifiPending = false;
+      bleWifiConnecting = false;
+      notifyBleStatus(String("WIFI CONNECTED ") + WiFi.localIP().toString());
+      if(wifiClockEnabled){
+        scheduleNtpSyncNow();
+      }
+    }else if(currentMillis - bleWifiStartedAt > BLE_WIFI_CONNECT_TIMEOUT_MS){
+      bleWifiPending = false;
+      bleWifiConnecting = false;
+      notifyBleStatus("WIFI CONNECT FAILED");
+    }
+  }
+}
+
+void updateBleDisplay(unsigned long currentMillis){
+  if(bleDisplayTextActive){
+    pixelMenu.showText(bleDisplayText, currentMillis, WHITE);
+  }
+}
+
 #include "setupMenu.h"
 
 unsigned long loopTimerTemp = 0;
@@ -1067,6 +1321,7 @@ void loop() {
   server.handleClient();
   
   loopTimerTemp = millis();
+  processBleTasks(loopTimerTemp);
 
   readHardwareButtons(loopTimerTemp);
   if(hardwareResetLong){
@@ -1149,6 +1404,8 @@ void loop() {
     pixelClock.update(loopTimerTemp); //Show Clock
   }else if (currentMode == MOOD_LIGHT){
     pixelMood.update(loopTimerTemp); //Mood light / RGB randomizer
+  }else if (currentMode == BLE_DISPLAY){
+    updateBleDisplay(loopTimerTemp); //BLE phone display/message board
   }
   }
   handleNtpSchedule(loopTimerTemp);
@@ -1316,7 +1573,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
     
     case WStype_BIN:
     Serial.printf("[%u] got binary length: %u\n", num, lenght);
-    hexdump(payload, lenght);
     break;
     
     default:
@@ -1446,6 +1702,7 @@ void setup() {
   Serial.println("Display ICON");
   pixelArt.displayIcon("wifi.bmp");
   
+  setupBLE();
   wifiManager.setConfigPortalTimeout(60);
   connectWiFi();
 
@@ -1455,7 +1712,7 @@ void setup() {
 	Serial.println("Starting UDP");
 	UDP.begin(123);                          // Start listening for UDP messages on port 123
 	Serial.print("Local port:\t");
-	Serial.println(UDP.localPort());
+	Serial.println(123);
   
 	WiFi.hostByName(NTPServerName, timeServerIP);
 	 Serial.print("Time server IP:\t");
