@@ -3,18 +3,17 @@
 #ifndef _PIXELART_h
 #define _PIXELART_h
 #include "SdFat.h"
-#include "PixelBoardBase.h"
-#include "PixelBoardController.h"
+#include "pixelBoardBase.h"
+#include "pixelBoardController.h"
 #include <algorithm>    /* std::max */
 
-using namespace sdfat;
 //#include "SdFat/src/SdFat.h" //https://github.com/greiman/SdFat
 //#include <SdFat.h> //https://github.com/greiman/SdFat
 #define BUFFPIXEL 1
 class PixelArt : public PixelBoardBase{
 public:
 	PixelArt(){};
-	PixelArt(Adafruit_NeoPixel* stripPtr, SdFat* s, PixelBoardController* pixelBoardControllerPtr) : PixelBoardBase(stripPtr), sdPtr(s), pixelBoardController(pixelBoardControllerPtr){};
+	PixelArt(Adafruit_NeoPixel* stripPtr, SdFat32* s, PixelBoardController* pixelBoardControllerPtr) : PixelBoardBase(stripPtr), sdPtr(s), pixelBoardController(pixelBoardControllerPtr){};
 	~PixelArt(){};
 	
 	int currentFolderPointer = -1;
@@ -45,12 +44,13 @@ public:
 		this->isTraverseFolderMode = false;
 	}
 	
-	void displayIcon(char* filename);
+	void displayIcon(const char* filename);
 private:
   PixelBoardController* pixelBoardController;
   
-	SdFat* sdPtr;
-	SdFile file;
+	SdFat32* sdPtr;
+	File32 file;
+	File32 root;
 
 	char folderName[20];
 	char fileName[20];
@@ -60,14 +60,14 @@ private:
 	// These read 16- and 32-bit types from the SD card file.
 	// BMP data is stored little-endian, Arduino is little-endian too.
 	// May need to reverse subscript order if porting elsewhere.
-	uint16_t read16(SdFile& f);
-	uint32_t read32(SdFile& f);
+	uint16_t read16(File32& f);
+	uint32_t read32(File32& f);
 	  
 	
 	void NextFolder();
   void PreviousFolder();
 	
-	void bmpDraw(char* filename);
+	void bmpDraw(const char* filename);
 	int  currentFileIndex = 1;
 	bool currentFolderCompleted = true;
 	bool isTraverseFolderMode = false;

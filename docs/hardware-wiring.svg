@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="980" viewBox="0 0 1400 980">
+  <defs>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #111; }
+      .title { font-size: 34px; font-weight: 700; }
+      .subtitle { font-size: 18px; fill: #555; }
+      .box-title { font-size: 22px; font-weight: 700; }
+      .label { font-size: 17px; }
+      .small { font-size: 14px; }
+      .wire5v { stroke: #d71920; stroke-width: 5; fill: none; }
+      .wiregnd { stroke: #111; stroke-width: 5; fill: none; }
+      .wiredata { stroke: #1d62d4; stroke-width: 4; fill: none; }
+      .wirei2c { stroke: #7a42b8; stroke-width: 4; fill: none; }
+      .wirespi { stroke: #e47700; stroke-width: 4; fill: none; }
+      .wirebtn { stroke: #008da8; stroke-width: 4; fill: none; }
+      .box { fill: #f7f9fc; stroke: #222; stroke-width: 3; rx: 12; }
+      .warn { fill: #fff6f6; stroke: #d71920; stroke-width: 3; rx: 12; }
+    </style>
+  </defs>
+
+  <text class="title" x="700" y="45" text-anchor="middle">pixelBoard ESP8266 Wiring</text>
+  <text class="subtitle" x="700" y="75" text-anchor="middle">Common GND is required. NeoPixels use 5V power; ESP8266 GPIO is 3.3V only.</text>
+
+  <rect class="box" x="45" y="115" width="330" height="455"/>
+  <text class="box-title" x="65" y="150">ESP8266 Dev Board</text>
+  <text class="label" x="70" y="190">D4 / GPIO2: NeoPixel DATA</text>
+  <text class="label" x="70" y="225">D2 / GPIO4: RTC SDA</text>
+  <text class="label" x="70" y="260">D1 / GPIO5: RTC SCL</text>
+  <text class="label" x="70" y="305">D5 / GPIO14: SD SCK</text>
+  <text class="label" x="70" y="340">D6 / GPIO12: SD MISO</text>
+  <text class="label" x="70" y="375">D7 / GPIO13: SD MOSI</text>
+  <text class="label" x="70" y="410">D8 / GPIO15: SD CS</text>
+  <text class="label" x="70" y="465">3V3: RTC + button pullups</text>
+  <text class="label" x="70" y="500">GND: common ground</text>
+  <text class="label" x="70" y="535">VIN/5V: optional 5V input</text>
+
+  <rect class="box" x="945" y="115" width="380" height="220" style="stroke:#258a42"/>
+  <text class="box-title" x="965" y="150">16x16 NeoPixel Matrix</text>
+  <text class="label" x="970" y="190">5V/V+: external 5V supply +</text>
+  <text class="label" x="970" y="225">GND: common ground</text>
+  <text class="label" x="970" y="260">DIN: from GPIO2 through resistor</text>
+  <text class="label" x="970" y="295">Add 1000 uF capacitor at matrix</text>
+
+  <rect class="box" x="945" y="390" width="380" height="185" style="stroke:#d71920"/>
+  <text class="box-title" x="965" y="425">5V LED Power Supply</text>
+  <text class="label" x="970" y="465">+5V to NeoPixel 5V/V+</text>
+  <text class="label" x="970" y="500">GND to NeoPixel GND and ESP GND</text>
+  <text class="label" x="970" y="535">256 LEDs x 60 mA max = 15.36 A</text>
+
+  <rect class="box" x="480" y="125" width="335" height="190" style="stroke:#7a42b8"/>
+  <text class="box-title" x="500" y="160">DS3231 RTC Module</text>
+  <text class="label" x="505" y="200">VCC: ESP 3V3 preferred</text>
+  <text class="label" x="505" y="235">GND: common ground</text>
+  <text class="label" x="505" y="270">SDA: D2 / GPIO4</text>
+  <text class="label" x="505" y="300">SCL: D1 / GPIO5</text>
+
+  <rect class="box" x="480" y="360" width="335" height="235" style="stroke:#e47700"/>
+  <text class="box-title" x="500" y="395">SD Card Module</text>
+  <text class="label" x="505" y="435">SCK: D5 / GPIO14</text>
+  <text class="label" x="505" y="470">MISO: D6 / GPIO12</text>
+  <text class="label" x="505" y="505">MOSI: D7 / GPIO13</text>
+  <text class="label" x="505" y="540">CS: D8 / GPIO15</text>
+  <text class="label" x="505" y="575">VCC: match your SD module</text>
+
+  <rect class="box" x="45" y="640" width="735" height="265" style="stroke:#008da8"/>
+  <text class="box-title" x="65" y="675">Hardware Buttons - Active Low</text>
+  <text class="label" x="70" y="715">Each button GPIO uses INPUT_PULLUP in firmware.</text>
+  <text class="label" x="70" y="750">Recommended wiring: 3.3V -> 10k pullup -> GPIO -> button -> GND.</text>
+  <text class="label" x="70" y="785">Optional: 100 nF capacitor from GPIO to GND for hardware debounce.</text>
+  <text class="label" x="70" y="820">Buttons: Reset/Menu, Select, Up, Down. Do not connect GPIO to 5V.</text>
+  <text class="label" x="70" y="855">Set HW_BUTTON_*_PIN values in pixelBoard.ino before flashing.</text>
+
+  <rect class="warn" x="850" y="660" width="475" height="185"/>
+  <text class="box-title" x="875" y="700" fill="#d71920">Pin cautions</text>
+  <text class="label" x="875" y="735">GPIO0/D3 must be high at boot.</text>
+  <text class="label" x="875" y="770">GPIO2/D4 must be high at boot and drives NeoPixels.</text>
+  <text class="label" x="875" y="805">GPIO15/D8 must be low at boot and is SD CS.</text>
+
+  <path class="wiredata" d="M375 185 H560"/>
+  <rect x="575" y="160" width="150" height="50" fill="#fff9df" stroke="#222" stroke-width="2" rx="8"/>
+  <text class="small" x="650" y="181" text-anchor="middle">330-470 ohm</text>
+  <text class="small" x="650" y="199" text-anchor="middle">series resistor</text>
+  <path class="wiredata" d="M725 185 H945"/>
+  <text class="small" x="395" y="175">GPIO2 / D4 DATA</text>
+  <text class="small" x="825" y="175">to DIN</text>
+
+  <path class="wire5v" d="M945 455 H885 V185 H945"/>
+  <path class="wiregnd" d="M945 500 H865 V225 H945"/>
+  <path class="wiregnd" d="M865 500 H375"/>
+  <path class="wire5v" d="M885 455 H375"/>
+  <text class="small" x="735" y="435">optional 5V to VIN/5V</text>
+  <text class="small" x="710" y="525">common GND to ESP</text>
+
+  <path class="wirei2c" d="M375 225 H480"/>
+  <path class="wirei2c" d="M375 260 H480"/>
+  <path class="wire5v" d="M375 465 H450 V200 H480"/>
+  <path class="wiregnd" d="M375 500 H435 V235 H480"/>
+
+  <path class="wirespi" d="M375 305 H480"/>
+  <path class="wirespi" d="M375 340 H480"/>
+  <path class="wirespi" d="M375 375 H480"/>
+  <path class="wirespi" d="M375 410 H480"/>
+
+  <line x1="1185" y1="320" x2="1185" y2="365" stroke="#d71920" stroke-width="5"/>
+  <line x1="1235" y1="320" x2="1235" y2="365" stroke="#111" stroke-width="5"/>
+  <text class="small" x="1080" y="360">1000 uF capacitor</text>
+  <text class="small" x="1080" y="380">across 5V and GND</text>
+
+  <path class="wirebtn" d="M390 715 H620"/>
+  <text class="small" x="405" y="705">chosen GPIO</text>
+  <line x1="515" y1="715" x2="515" y2="675" stroke="#d71920" stroke-width="3"/>
+  <rect x="497" y="645" width="36" height="30" fill="white" stroke="#222" stroke-width="2"/>
+  <text class="small" x="545" y="666">10k to 3.3V</text>
+  <line x1="620" y1="695" x2="620" y2="735" stroke="#111" stroke-width="3"/>
+  <line x1="650" y1="695" x2="650" y2="735" stroke="#111" stroke-width="3"/>
+  <path class="wiregnd" d="M650 715 H710 V765"/>
+  <line x1="690" y1="765" x2="730" y2="765" stroke="#111" stroke-width="3"/>
+  <line x1="698" y1="775" x2="722" y2="775" stroke="#111" stroke-width="3"/>
+  <line x1="706" y1="785" x2="714" y2="785" stroke="#111" stroke-width="3"/>
+
+  <text class="subtitle" x="45" y="945">Exact direct-button GPIO choices depend on your ESP8266 board and whether SD, RTC, Serial, and boot-strap pins are already in use.</text>
+</svg>

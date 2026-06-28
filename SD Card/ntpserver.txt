@@ -1,0 +1,4 @@
+# Optional NTP server override.
+# The firmware uses the first non-empty, non-comment line.
+# Delete this file or leave only comments to use the built-in default.
+pool.ntp.org

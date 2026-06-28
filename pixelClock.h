@@ -2,7 +2,7 @@
 //Class to display time with PixelBoardBase
 #ifndef _PIXELCLOCK_H
 #define _PIXELCLOCK_H
-#include "PixelBoardBase.h"
+#include "pixelBoardBase.h"
 #include <Wire.h>        //I2C device 
 #include <RtcDS3231.h>
 
@@ -15,7 +15,10 @@ public:
 	
 	void update(unsigned long currentMillis);
 	void reset();
+	void setUse24Hour(bool value);
+	bool getUse24Hour();
 private:
+	bool use24Hour = true;
 	byte currentSecondIndicator = 0;
 	byte digit1 = 255;
 	byte digit2 = 255;

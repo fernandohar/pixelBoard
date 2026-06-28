@@ -1,0 +1,4 @@
+# Optional WiFi clock NTP sync interval, in seconds.
+# Default in firmware is 300 seconds.
+# Minimum accepted value is 30 seconds.
+300
