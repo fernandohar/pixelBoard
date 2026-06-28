@@ -1,12 +1,27 @@
 # pixelBoard
 
-ESP8266 firmware for a 16x16 NeoPixel matrix with SD-card animations, a DS3231
-RTC clock, web control, OTA updates, games, and a hardware setup menu.
+ESP32-S3 Super Mini firmware for a 16x16 NeoPixel matrix with SD-card
+animations, a DS3231 RTC clock, web control, BLE phone control, OTA updates,
+games, mood lighting, and a hardware setup menu.
 
-## Arduino / ESP8266 compatibility
+## Arduino / ESP32-S3 compatibility
 
-This branch targets the ESP8266 Arduino board package **3.1.2** SD stack. The
-firmware uses the bundled ESP8266SdFat-style API:
+This branch targets an ESP32-S3 Super Mini style board using the ESP32 Arduino
+core. Recommended Arduino IDE board settings:
+
+```text
+Board: ESP32S3 Dev Module
+Flash Size: 4MB
+PSRAM: QSPI PSRAM / Enabled
+USB CDC On Boot: Enabled
+Partition Scheme: No FS 4MB (2MB APP x2)
+```
+
+The larger app partition is important because WiFi, WebServer, WebSockets, BLE,
+OTA, games, SD card, and RTC support do not fit in the default 1.2 MB ESP32-S3
+app partition.
+
+The firmware uses the SdFat API:
 
 ```cpp
 SdFat32 sd;
@@ -14,10 +29,62 @@ File32 file;
 sd.begin(SdSpiConfig(...));
 ```
 
-This replaces the older `SdFat` / `SdFile` usage that worked with ESP8266 board
-package 2.7.4 but caused compile problems with newer ESP8266 cores. If Arduino
-IDE asks which `SdFat.h` to use, prefer the one bundled with the ESP8266 board
-package instead of an old separately installed SdFat library.
+Install the Arduino `SdFat` library if it is not already available.
+
+## ESP32-S3 Super Mini pin map
+
+Default pin assignments for the Super Mini pinout used by this branch:
+
+| Function | ESP32-S3 GPIO | Notes |
+| --- | --- | --- |
+| External NeoPixel matrix DIN | GPIO21 | Avoids GPIO48, which is used by many Super Mini onboard RGB LEDs. |
+| RTC SDA | GPIO8 | I2C SDA |
+| RTC SCL | GPIO9 | I2C SCL |
+| SD SCK | GPIO12 | SPI clock |
+| SD MISO | GPIO13 | SPI MISO |
+| SD MOSI | GPIO11 | SPI MOSI |
+| SD CS | GPIO10 | SPI chip select |
+| Reset/Menu button | GPIO4 | Active-low, uses `INPUT_PULLUP` |
+| Select button | GPIO5 | Active-low, uses `INPUT_PULLUP` |
+| Up button | GPIO6 | Active-low, uses `INPUT_PULLUP` |
+| Down button | GPIO7 | Active-low, uses `INPUT_PULLUP` |
+
+The Super Mini board's onboard RGB LED is usually on GPIO48. The external matrix
+is intentionally mapped to GPIO21 so it does not fight with the onboard LED.
+
+## BLE phone control
+
+This branch starts a BLE GATT service using the same generated device name as
+the WiFi setup portal:
+
+```text
+pixelboard_XXXXXX
+```
+
+BLE service and characteristics:
+
+| Purpose | UUID |
+| --- | --- |
+| Service | `7d8f0001-6f8a-4a5a-9d6b-40f520dc0001` |
+| Command write characteristic | `7d8f0002-6f8a-4a5a-9d6b-40f520dc0001` |
+| Status notify/read characteristic | `7d8f0003-6f8a-4a5a-9d6b-40f520dc0001` |
+
+Initial phone-app command protocol:
+
+| Command | Description |
+| --- | --- |
+| `WIFI:ssid|password` | Connect the board to WiFi from a phone over BLE. |
+| `TEXT:hello` | Scroll text on the matrix. |
+| `CLEAR` | Clear the display. |
+| `PIX:x,y,RRGGBB` | Draw one pixel, useful for live phone drawing. |
+| `ROW:y:<96 hex chars>` | Send one 16-pixel row, 6 hex chars per pixel. |
+| `FRAME:<1536 hex chars>` | Send a full 16x16 RGB frame. |
+| `BRIGHT:n` | Set brightness level. |
+
+For a future iPhone/Android app, the recommended approach is for the phone to
+decode/resize BMPs or drawings into a 16x16 RGB frame, then send either `ROW`
+chunks or a `FRAME` command over BLE. This keeps the firmware small and avoids
+doing heavy image decoding over BLE on the microcontroller.
 
 ## Menu overview
 
@@ -27,14 +94,14 @@ it starts in pixel-art traverse mode when the SD card is available, or clock mod
 when it is not.
 
 Editable copies of the browser controller pages live in `resources/web/`. The
-runtime copies remain in `SD Card/`, because the ESP8266 serves
+runtime copies remain in `SD Card/`, because the ESP32-S3 serves
 `pixBoardController.htm` and `gameController.htm` directly from the SD card.
 
 The hardware **Reset/Menu** button is a software menu button:
 
 - Short press outside the menu: open the setup menu.
 - Short press inside the menu: go back one level, or exit from the root menu.
-- Hold for 3 seconds: save state and restart the ESP8266.
+- Hold for 3 seconds: save state and restart the ESP32-S3.
 
 The hardware **Up** and **Down** buttons move through menu items. Outside the
 menu, they cycle the board display modes, except in Mood Light mode where they
@@ -97,7 +164,7 @@ Some display modes are games and need directional controls that are easier to
 use from the browser controller than from the four hardware setup buttons. This
 includes Snake, Tetris, and Arkanoid.
 
-The ESP8266 serves the controller pages from the SD card:
+The ESP32-S3 serves the controller pages from the SD card:
 
 ```text
 http://<device-ip>/pixBoardController.htm
@@ -259,28 +326,26 @@ not automatically apply daylight saving time rules.
 
 ## Hardware wiring
 
-The firmware is written for an ESP8266 Dev board driving a 5V NeoPixel matrix.
-The code currently creates the NeoPixel strip on **GPIO2**:
+This branch is wired for an ESP32-S3 Super Mini driving a 5V NeoPixel matrix.
+The external matrix data pin is configured as GPIO21:
 
 ```cpp
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(BOARDSIZE, 2, NEO_GRB + NEO_KHZ800);
+#define NEOPIXEL_PIN 21
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(BOARDSIZE, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 ```
 
-### Wiring diagram
-
-See the JPEG wiring diagram. The editable source is also included as
-[`docs/hardware-wiring.svg`](docs/hardware-wiring.svg).
-
-![ESP8266 pixelBoard wiring](docs/hardware-wiring.jpg)
+The older wiring diagram files still show the ESP8266 version and should be
+regenerated before using them for ESP32-S3 assembly. Use the pin table below as
+the source of truth for this branch.
 
 ### Power wiring
 
 | Connection | Wire to | Notes |
 | --- | --- | --- |
-| 5V power supply `+` | NeoPixel matrix `5V` | Do not power 256 LEDs from the ESP8266 USB port. |
-| 5V power supply `-` | NeoPixel matrix `GND` | Must also connect to ESP8266 `GND`. |
-| 5V power supply `-` | ESP8266 `GND` | Required common ground for data signal. |
-| ESP8266 `VIN` / `5V` | 5V supply `+` | Optional if not powering the ESP8266 by USB. |
+| 5V power supply `+` | NeoPixel matrix `5V` | Do not power 256 LEDs from USB. |
+| 5V power supply `-` | NeoPixel matrix `GND` | Must also connect to ESP32-S3 `GND`. |
+| 5V power supply `-` | ESP32-S3 `GND` | Required common ground for data signal. |
+| ESP32-S3 `5V` / `VBUS` | 5V supply `+` | Optional if not powering the ESP32-S3 by USB. |
 
 For a 16x16 matrix, worst-case full white current is about:
 
@@ -296,40 +361,40 @@ Add these parts near the NeoPixel matrix:
 
 | Part | Where | Why |
 | --- | --- | --- |
-| 330 to 470 ohm resistor | In series between ESP8266 GPIO2 and NeoPixel `DIN` | Protects the first pixel from data-line spikes. |
+| 330 to 470 ohm resistor | In series between ESP32-S3 GPIO21 and NeoPixel `DIN` | Protects the first pixel from data-line spikes. |
 | 1000 uF electrolytic capacitor, 6.3V or higher | Across NeoPixel `5V` and `GND` | Absorbs LED power-up surges. Observe polarity. |
-| 74AHCT125 / 74HCT245 level shifter | Between ESP8266 data and NeoPixel `DIN` | Recommended for reliable 3.3V-to-5V data conversion. Short wires may work without it, but the level shifter is safer. |
+| 74AHCT125 / 74HCT245 level shifter | Between ESP32-S3 data and NeoPixel `DIN` | Recommended for reliable 3.3V-to-5V data conversion. |
 
-### ESP8266 Dev board pin map
+### ESP32-S3 Super Mini pin map
 
-| Module | ESP8266 Dev board pin | ESP8266 GPIO | Notes |
-| --- | --- | --- | --- |
-| NeoPixel `DIN` | `D4` | GPIO2 | Current firmware data pin. Put 330-470 ohm resistor in series. |
-| NeoPixel `5V` | External 5V `+` | - | Use external LED power. |
-| NeoPixel `GND` | External 5V `-` and ESP `GND` | - | All grounds must be common. |
-| DS3231 RTC `SDA` | `D2` | GPIO4 | ESP8266 Arduino `Wire` default. |
-| DS3231 RTC `SCL` | `D1` | GPIO5 | ESP8266 Arduino `Wire` default. |
-| DS3231 RTC `VCC` | `3V3` | - | Prefer 3.3V so I2C pullups do not pull ESP pins to 5V. |
-| DS3231 RTC `GND` | `GND` | - | Common ground. |
-| SD card `SCK` | `D5` | GPIO14 | SPI clock. |
-| SD card `MISO` | `D6` | GPIO12 | SPI MISO. |
-| SD card `MOSI` | `D7` | GPIO13 | SPI MOSI. |
-| SD card `CS` | `D8` | GPIO15 | `#define SD_CS 15` in the sketch. |
+| Module | ESP32-S3 GPIO | Notes |
+| --- | --- | --- |
+| NeoPixel `DIN` | GPIO21 | Current external matrix data pin. Put 330-470 ohm resistor in series. |
+| NeoPixel `5V` | External 5V `+` | Use external LED power. |
+| NeoPixel `GND` | External 5V `-` and ESP32-S3 `GND` | All grounds must be common. |
+| DS3231 RTC `SDA` | GPIO8 | I2C SDA. |
+| DS3231 RTC `SCL` | GPIO9 | I2C SCL. |
+| DS3231 RTC `VCC` | `3V3` | Prefer 3.3V so I2C pullups do not pull ESP32-S3 pins to 5V. |
+| DS3231 RTC `GND` | `GND` | Common ground. |
+| SD card `SCK` | GPIO12 | SPI clock. |
+| SD card `MISO` | GPIO13 | SPI MISO. |
+| SD card `MOSI` | GPIO11 | SPI MOSI. |
+| SD card `CS` | GPIO10 | `#define SD_CS 10` in the sketch. |
 
 > Note: Many DS3231 modules include pullup resistors on SDA/SCL. If your module
-> is powered from 5V, those pullups can put 5V on ESP8266 GPIO pins. Power the
+> is powered from 5V, those pullups can put 5V on ESP32-S3 GPIO pins. Power the
 > RTC from 3.3V or remove/change the pullups.
 
 ### Hardware button wiring
 
 The firmware supports four configurable hardware buttons:
 
-| Button | Firmware purpose |
-| --- | --- |
-| Reset/Menu | Short press opens/back-outs of the menu. Hold 3 seconds to software-reset the ESP8266. |
-| Select | Selects the current menu item. |
-| Up | Menu up / increase value. Outside the menu, cycles to the previous board mode. |
-| Down | Menu down / decrease value. Outside the menu, cycles to the next board mode. |
+| Button | Default ESP32-S3 GPIO | Firmware purpose |
+| --- | --- | --- |
+| Reset/Menu | GPIO4 | Short press opens/back-outs of the menu. Hold 3 seconds to software-reset the ESP32-S3. |
+| Select | GPIO5 | Selects the current menu item. |
+| Up | GPIO6 | Menu up / increase value. Outside the menu, cycles to the previous board mode. |
+| Down | GPIO7 | Menu down / decrease value. Outside the menu, cycles to the next board mode. |
 
 Buttons are read as **active-low**:
 
@@ -339,7 +404,7 @@ Buttons are read as **active-low**:
 
 The code also enables `INPUT_PULLUP`, so the external 10k pullup is optional for
 short wires, but recommended for reliable hardware. Do **not** connect any
-ESP8266 GPIO button input to 5V.
+ESP32-S3 GPIO button input to 5V.
 
 Optional button parts:
 
@@ -349,39 +414,8 @@ Optional button parts:
 | 100 nF capacitor | GPIO input to GND | Optional hardware debounce/noise filtering. |
 | 220 ohm to 1k resistor | In series with GPIO input | Optional protection against wiring mistakes. |
 
-Configure the button GPIOs in `pixelBoard.ino` before flashing:
-
-```cpp
-#define HW_BUTTON_RESET_PIN  -1
-#define HW_BUTTON_SELECT_PIN -1
-#define HW_BUTTON_UP_PIN     -1
-#define HW_BUTTON_DOWN_PIN   -1
-```
-
-Replace `-1` with the GPIO numbers you wire to. They are disabled while set to
-`-1`.
-
-Because this project already uses NeoPixel, SD/SPI, and I2C RTC pins, an
-ESP8266 Dev board has very few completely free GPIOs. If you keep SD, RTC,
-NeoPixel, USB Serial, and four buttons all connected, consider using an I2C GPIO
-expander such as a PCF8574 for the buttons. If you wire buttons directly to the
-ESP8266, choose pins carefully and avoid changing boot-strap pin levels during
-reset.
-
-Important ESP8266 pin cautions:
-
-| GPIO | Dev board label | Caution |
-| --- | --- | --- |
-| GPIO0 | `D3` | Must be high at boot, or the ESP8266 enters flash mode. |
-| GPIO2 | `D4` | Must be high at boot; this project uses it for NeoPixel data. |
-| GPIO15 | `D8` | Must be low at boot; this project uses it for SD card CS. |
-| GPIO1 / GPIO3 | `TX` / `RX` | Used for USB Serial; buttons here can interfere with Serial output/upload. |
-| GPIO16 | `D0` | Special GPIO; usable for simple input, but different from other pins. |
-
-The Reset/Menu button in this project is a **software menu/reset button**, not
-the ESP8266 board `RST` pin. If you also want a physical hard reset button, wire
-a separate momentary button from `RST` to `GND`; most Dev boards already include
-the required reset pullup.
+Configure the button GPIOs in `pixelBoard.ino` before flashing if you want a
+different pinout.
 
 ### Button and menu behavior
 
